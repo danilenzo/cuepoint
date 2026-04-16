@@ -11,6 +11,17 @@ Multi-source ETL pipeline that scrapes electronic music events from RA.co and cl
 
 ## Quick start
 
+### Docker (recommended)
+
+```bash
+git clone <repo-url> && cd techno_scan
+docker compose up --build
+# API running at http://localhost:8000
+# Swagger UI at http://localhost:8000/docs
+```
+
+### Local
+
 ```bash
 git clone <repo-url> && cd techno_scan
 pip install -r requirements.txt
@@ -21,7 +32,6 @@ python event_fetcher.py --cities berlin --days 7
 
 # API - start the server
 uvicorn api:app --port 8000
-# then visit http://localhost:8000/docs for Swagger UI
 ```
 
 ---
