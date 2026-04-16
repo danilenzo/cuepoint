@@ -1,0 +1,71 @@
+[tool.pytest.ini_options]
+pythonpath = ["lib/parser"]
+testpaths = ["lib/parser/tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["lib/parser"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E402",   # module-level import not at top (gui.py needs env setup before tkinter)
+    "B010",   # do not call setattr with a constant attribute value
+    "SIM102", # nested if → combined if (reduces readability in some cases)
+    "SIM103", # return condition directly (less readable with complex expressions)
+    "SIM105", # contextlib.suppress (try/except/pass is clearer for small blocks)
+    "SIM108", # use ternary operator (reduces readability in some cases)
+    "SIM110", # use any() (for loop with early return is clearer)
+    "RUF001", # ambiguous unicode — en-dashes are intentional
+    "RUF002", # ambiguous unicode in docstrings
+    "RUF003", # ambiguous unicode in comments
+    "UP047",  # TypeVar → PEP 695 syntax (keep compat with mypy)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "config", "db", "enrichment", "scoring", "discovery",
+    "fuzzy_match", "http_utils", "tag_utils", "stats",
+    "sc", "discogs", "bandcamp", "club_scrapers",
+    "following", "fetch_following", "flyers",
+    "generic", "payloads", "html_creator", "gui",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+mypy_path = "lib/parser"
+
+[[tool.mypy.overrides]]
+module = "gui"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+warn_return_any = false
+disable_error_code = ["misc"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+warn_return_any = false
+
+[tool.coverage.run]
+source = ["lib/parser"]
+omit = ["lib/parser/tests/*", "lib/parser/gui.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 40

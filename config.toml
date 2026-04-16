@@ -1,0 +1,118 @@
+[general]
+days_ahead = 7
+ra_request_delay = 0.1
+max_workers = 3
+incremental = true
+
+[cache]
+ttl_days = 30
+ttl_following_days = 7
+stale_days = 14
+
+[scoring]
+sc_weight = 10
+dc_weight = 5
+bc_weight = 8
+ra_genre_bonus = 5000
+followed_bonus = 1000000
+lineup_sc_threshold = 1000
+lineup_dc_threshold = 50
+lineup_bc_threshold = 30
+rising_bonus = 3000
+similarity_weight = 30
+shared_label_bonus = 1500
+dc_ratio_weight = 80
+recency_bonus = 800
+
+[genres]
+filter = ["Techno", "Drum & Bass", "Drum n Bass", "House", "Trance"]
+
+[cities.amsterdam]
+area = 29
+name = "Amsterdam"
+slug = "nl/amsterdam"
+
+[cities.berlin]
+area = 34
+name = "Berlin"
+slug = "de/berlin"
+
+[cities.london]
+area = 13
+name = "London"
+slug = "uk/london"
+
+[cities.tbilisi]
+area = 188
+name = "Tbilisi"
+slug = "ge/tbilisi"
+
+[cities.warsaw]
+area = 454
+name = "Warsaw"
+slug = "pl/warsaw"
+
+[cities.osaka]
+area = 664
+name = "Osaka"
+slug = "jp/osaka"
+
+[cities.bsas]
+area = 395
+name = "Buenos Aires"
+slug = "ar/buenosaires"
+
+[cities.bristol]
+area = 446
+name = "Bristol"
+slug = "uk/bristol"
+
+[cities.birmingham]
+area = 516
+name = "Birmingham"
+slug = "uk/birmingham"
+
+[cities.wuppertal]
+area = 353
+name = "Wuppertal"
+slug = "de/northrhinewestphalia"
+
+[cities.tokyo]
+area = 27
+name = "Tokyo"
+slug = "jp/tokyo"
+
+[cities.madrid]
+area = 41
+name = "Madrid"
+slug = "es/madrid"
+
+[cities.barcelona]
+area = 20
+name = "Barcelona"
+slug = "es/barcelona"
+
+[cities.athens]
+area = 549
+name = "Athens"
+slug = "gr/athens"
+
+[cities.paris]
+area = 44
+name = "Paris"
+slug = "fr/paris"
+
+[cities.lisbon]
+area = 53
+name = "Lisbon"
+slug = "pt/lisbon"
+
+[discovery]
+rising_sc_pct = 20
+rising_dc_pct = 30
+
+[discogs]
+max_masters = 15
+
+[bandcamp]
+max_albums = 5
