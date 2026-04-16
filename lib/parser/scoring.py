@@ -1,0 +1,164 @@
+"""
+Scoring, filtering, and recording logic for techno_scan events.
+
+Extracted from event_fetcher.py for maintainability.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+import pandas as pd
+from loguru import logger
+
+import config as cfg
+from following import is_following, record
+from tag_utils import count_genre_matches, parse_artist_tags
+
+
+def filter_df(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.groupby("event_id").head(1).reset_index(drop=True)
+    _filter_genres = cfg.genre_filter()
+
+    def filter_row(row: Any) -> bool:
+        genres = []
+        following = False
+
+        for artist in row["artists_info"]:
+            if artist is not None:
+                genres.extend(parse_artist_tags(artist))
+                if is_following(artist.get("soundcloud")):
+                    following = True
+
+        try:
+            for artist in row["artists_list_info_past"]:
+                if artist is not None:
+                    genres.extend(parse_artist_tags(artist))
+                    if is_following(artist.get("soundcloud")):
+                        following = True
+        except Exception as e:
+            logger.warning(f"filter_row past artists error: {e}")
+
+        for genre in row["genres"]:
+            genres.append(genre["name"])
+
+        # If RA didn't tag the event with any genre, let it through — scoring handles ranking
+        ra_has_genres = len(row["genres"]) > 0
+        if not ra_has_genres:
+            return True
+
+        return following or any(g in genres for g in _filter_genres)
+
+    return df[df.apply(filter_row, axis=1)]
+
+
+def find_and_record(df: pd.DataFrame, city_name: str) -> None:
+    def find_and_record_fun(row: Any) -> None:
+        for artist in row["artists_info"]:
+            if artist is not None:
+                if "soundcloud" in artist:
+                    if is_following(artist["soundcloud"]):
+                        record(artist, row, city_name)
+
+    df.apply(find_and_record_fun, axis=1)
+
+
+def _is_notable(artist_info: dict[str, Any] | None) -> bool:
+    """Check if an artist exceeds any lineup-strength threshold."""
+    if artist_info is None:
+        return False
+    sc = artist_info.get("sc_followers")
+    if sc is not None and int(sc) >= cfg.lineup_sc_threshold():
+        return True
+    dc = artist_info.get("dc_have")
+    if dc is not None and int(dc) >= cfg.lineup_dc_threshold():
+        return True
+    bc = artist_info.get("bc_supporters")
+    if bc and int(bc) >= cfg.lineup_bc_threshold():
+        return True
+    return False
+
+
+def sort_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    _genre_set = set(cfg.genre_filter())
+
+    def count_techno_in_list(genres: list[str]) -> int:
+        return sum(1 for g in genres if g in _genre_set)
+
+    def score_row(row: Any) -> float:
+        title_rating: float = 0
+
+        def artist_dict_count(artist_info: dict[str, Any] | None, divisor: int = 1) -> float:
+            artist_count: float = 0
+            if artist_info is not None:
+                genre_hits = count_genre_matches(artist_info, _genre_set)
+
+                if "sc_followers" in artist_info and artist_info["sc_followers"] is not None:
+                    artist_count += int(artist_info["sc_followers"]) * genre_hits / cfg.sc_weight() / divisor
+
+                if is_following(artist_info.get("soundcloud")):
+                    artist_count += cfg.followed_bonus()
+
+                if "dc_have" in artist_info and artist_info["dc_have"] is not None:
+                    artist_count += int(artist_info["dc_have"]) * genre_hits / cfg.dc_weight() / divisor
+
+                if artist_info.get("bc_supporters"):
+                    artist_count += int(artist_info["bc_supporters"]) * genre_hits / cfg.bc_weight() / divisor
+
+                # --- Discovery signals ---
+                if artist_info.get("_rising"):
+                    artist_count += cfg.rising_bonus() / divisor
+
+                sim_score = artist_info.get("_similarity_score", 0)
+                if sim_score:
+                    artist_count += sim_score * cfg.similarity_weight() / divisor
+
+                shared = artist_info.get("_shared_labels")
+                if shared:
+                    artist_count += len(shared) * cfg.shared_label_bonus() / divisor
+
+                dc_ratio = artist_info.get("dc_ratio", 0)
+                if dc_ratio:
+                    artist_count += dc_ratio * cfg.dc_ratio_weight() / divisor
+
+                # Release recency — linear decay over 12 months
+                bc_release = artist_info.get("bc_latest_release")
+                if bc_release:
+                    try:
+                        release_dt = datetime.strptime(bc_release, "%Y-%m-%d")
+                        age_days = (datetime.now() - release_dt).days
+                        if 0 <= age_days <= 365:
+                            recency_factor = 1.0 - (age_days / 365.0)
+                            artist_count += cfg.recency_bonus() * recency_factor / divisor
+                    except (ValueError, TypeError):
+                        pass
+
+            return artist_count
+
+        for artist_info in row["artists_info"]:
+            title_rating += artist_dict_count(artist_info)
+
+        for artist_info in row["artists_list_info_past"]:
+            title_rating += artist_dict_count(artist_info, 5)
+
+        ra_genres = [g["name"] for g in row["genres"] if isinstance(g, dict)]
+        title_rating = title_rating + count_techno_in_list(ra_genres) * cfg.ra_genre_bonus()
+
+        return title_rating
+
+    def density_row(row: Any) -> tuple[int, int]:
+        artists = row["artists_info"]
+        total = len([a for a in artists if a is not None])
+        notable = sum(1 for a in artists if _is_notable(a))
+        return (notable, total)
+
+    df["_score"] = df.apply(score_row, axis=1)
+    density = df.apply(density_row, axis=1)
+    df["_lineup_notable"] = density.apply(lambda x: x[0])
+    df["_lineup_total"] = density.apply(lambda x: x[1])
+
+    return df.sort_values("_score", ascending=False).reset_index(drop=True)
