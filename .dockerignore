@@ -19,9 +19,9 @@ lib/parser/cache/
 *.db-wal
 *.db-shm
 
-.discogs_token
-.sc_credentials
-.sc_profile
+**/.discogs_token
+**/.sc_credentials
+**/.sc_profile
 .env
 .env.example
 
