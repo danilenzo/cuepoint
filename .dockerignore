@@ -12,6 +12,7 @@ CLAUDE.md
 chromedriver/
 lib/scratch/
 get-pip.py
+external_libs/rsm/
 
 output/
 lib/parser/cache/
@@ -29,6 +30,3 @@ lib/parser/cache/
 htmlcov/
 
 *.ico
-*.md
-!README.md
-LICENSE

@@ -2,25 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install only API/scraper dependencies (no GUI packages)
-COPY requirements.txt .
-RUN pip install --no-cache-dir \
-    beautifulsoup4 \
-    chardet \
-    loguru \
-    lxml \
-    numpy \
-    pandas \
-    python-dateutil \
-    requests \
-    fastapi \
-    uvicorn[standard] \
-    httpx
+COPY requirements-api.txt .
+RUN pip install --no-cache-dir -r requirements-api.txt
 
 # Copy source code and config
 COPY config.toml .
 COPY pyproject.toml .
-COPY external_libs/ external_libs/
+COPY external_libs/resident-advisor-events-scraper-main/ external_libs/resident-advisor-events-scraper-main/
 COPY lib/parser/ lib/parser/
 
 # Create directories for persistent data
