@@ -14,6 +14,7 @@ COPY src/ src/
 # Create directories for persistent data
 RUN mkdir -p output cache
 
-EXPOSE 8000
+ENV PORT=8000
+EXPOSE ${PORT}
 
-CMD ["uvicorn", "techno_scan.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD uvicorn techno_scan.api:app --host 0.0.0.0 --port ${PORT}

@@ -40,6 +40,19 @@ make test       # run test suite
 make lint       # check linting
 ```
 
+### Deploy (Railway / Render / Fly.io)
+
+The project includes a `Dockerfile` and `Procfile` for one-click deploy on any container platform. The `$PORT` env var is respected automatically.
+
+```bash
+# Railway
+railway up
+
+# Render — connect repo, select Docker, done
+# Fly.io
+fly launch
+```
+
 ---
 
 ## What it does
