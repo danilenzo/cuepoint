@@ -14,7 +14,8 @@ COPY src/ src/
 # Create directories for persistent data
 RUN mkdir -p output cache
 
+ENV PYTHONPATH=/app/src
 ENV PORT=8000
-EXPOSE ${PORT}
+EXPOSE 8000
 
 CMD uvicorn techno_scan.api:app --host 0.0.0.0 --port ${PORT}
