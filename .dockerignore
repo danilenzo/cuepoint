@@ -15,7 +15,7 @@ get-pip.py
 external_libs/rsm/
 
 output/
-lib/parser/cache/
+cache/
 *.db-wal
 *.db-shm
 

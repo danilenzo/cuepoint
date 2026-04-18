@@ -1,11 +1,17 @@
+[project]
+name = "techno_scan"
+version = "1.0.0"
+description = "Electronic music event scanner — fetches RA.co events, enriches artists via SoundCloud/Discogs/Bandcamp, filters and ranks by genre."
+requires-python = ">=3.12"
+
 [tool.pytest.ini_options]
-pythonpath = ["lib/parser"]
-testpaths = ["lib/parser/tests"]
+pythonpath = ["src"]
+testpaths = ["tests"]
 
 [tool.ruff]
 target-version = "py312"
 line-length = 120
-src = ["lib/parser"]
+src = ["src"]
 
 [tool.ruff.lint]
 select = [
@@ -34,22 +40,16 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = [
-    "config", "db", "enrichment", "scoring", "discovery",
-    "fuzzy_match", "http_utils", "tag_utils", "stats",
-    "sc", "discogs", "bandcamp", "club_scrapers",
-    "following", "fetch_following", "flyers",
-    "generic", "payloads", "html_creator", "gui",
-]
+known-first-party = ["techno_scan"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
-mypy_path = "lib/parser"
+mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = "gui"
+module = "techno_scan.gui"
 disallow_untyped_defs = false
 disallow_untyped_calls = false
 warn_return_any = false
@@ -63,8 +63,8 @@ disallow_untyped_decorators = false
 warn_return_any = false
 
 [tool.coverage.run]
-source = ["lib/parser"]
-omit = ["lib/parser/tests/*", "lib/parser/gui.py"]
+source = ["src/techno_scan"]
+omit = ["src/techno_scan/gui.py"]
 
 [tool.coverage.report]
 show_missing = true

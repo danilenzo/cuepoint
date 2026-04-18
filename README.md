@@ -2,10 +2,7 @@
 
 Multi-source ETL pipeline that scrapes electronic music events from RA.co and club websites, enriches artist data from three external APIs (SoundCloud, Discogs, Bandcamp), scores and ranks events using a configurable algorithm, and serves results via a FastAPI REST API or interactive HTML report.
 
-175 tests. GitHub Actions CI. Zero Selenium — all HTTP via `requests`.
-
-<!-- TODO: add screenshot of HTML report here -->
-<!-- ![HTML Report](docs/screenshot.png) -->
+179 tests. Docker support. Zero Selenium -- all HTTP via `requests`.
 
 ---
 
@@ -24,14 +21,23 @@ docker compose up --build
 
 ```bash
 git clone <repo-url> && cd techno_scan
-pip install -r requirements.txt
+pip install -r requirements-api.txt
+pip install pytest ruff httpx
 
 # CLI - scan Berlin events for the next 7 days
-cd lib/parser
-python event_fetcher.py --cities berlin --days 7
+python -m techno_scan.event_fetcher --cities berlin --days 7
 
 # API - start the server
-uvicorn api:app --port 8000
+uvicorn techno_scan.api:app --reload --port 8000
+```
+
+Or use the Makefile:
+
+```bash
+make install    # install dependencies
+make run        # start API server
+make test       # run test suite
+make lint       # check linting
 ```
 
 ---
@@ -40,12 +46,12 @@ uvicorn api:app --port 8000
 
 1. **Extracts** events from RA.co's GraphQL API + 5 club websites (Berghain, Tresor, Bassiani, Khidi, Openground)
 2. **Enriches** each artist from three sources:
-   - **SoundCloud** — genre tags, follower count (API with auto-extracted `client_id`)
-   - **Discogs** — release styles, have/want counts, ratings, labels (REST API)
-   - **Bandcamp** — tags, supporter counts, latest release date (scraping)
+   - **SoundCloud** -- genre tags, follower count (API with auto-extracted `client_id`)
+   - **Discogs** -- release styles, have/want counts, ratings, labels (REST API)
+   - **Bandcamp** -- tags, supporter counts, latest release date (scraping)
 3. **Filters** by configurable genres (default: Techno, Drum & Bass) or followed artists
 4. **Scores** using a weighted formula: SC followers + Discogs popularity + Bandcamp supporters + genre match multipliers + discovery bonuses (rising artists, similarity, shared labels, release recency)
-5. **Serves** results via REST API or generates interactive HTML reports per city
+5. **Serves** results via REST API with pagination, rate limiting, and CSV export, or generates interactive HTML reports per city
 
 ---
 
@@ -54,7 +60,7 @@ uvicorn api:app --port 8000
 Start the server:
 
 ```bash
-cd lib/parser && uvicorn api:app --reload --port 8000
+uvicorn techno_scan.api:app --reload --port 8000
 ```
 
 Interactive docs at `http://localhost:8000/docs`
@@ -66,8 +72,18 @@ Interactive docs at `http://localhost:8000/docs`
 | `POST` | `/scan` | Start a background scan for one or more cities |
 | `GET` | `/status` | List all scans with their status |
 | `GET` | `/status/{scan_id}` | Get status of a specific scan |
-| `GET` | `/results/{city}` | Latest results for a city as JSON |
+| `GET` | `/results/{city}` | Latest results for a city (paginated) |
+| `GET` | `/results/{city}/export` | Download results as CSV |
+| `GET` | `/health` | Readiness check (DB status, version) |
 | `GET` | `/cities` | List available city keys |
+
+### Features
+
+- **Pagination** -- `/results/{city}?page=1&page_size=50`
+- **Rate limiting** -- 5 scans per 60s per IP on POST `/scan`
+- **Persistent results** -- scan results stored in SQLite, survive server restarts
+- **CSV export** -- `/results/{city}/export` for spreadsheet analysis
+- **Health check** -- `/health` for monitoring and container orchestration
 
 ### Examples
 
@@ -80,8 +96,14 @@ curl -X POST http://localhost:8000/scan \
 # check status
 curl http://localhost:8000/status/abc123def456
 
-# get results
-curl http://localhost:8000/results/berlin
+# get results (page 1, 50 per page)
+curl http://localhost:8000/results/berlin?page=1&page_size=50
+
+# export as CSV
+curl -O http://localhost:8000/results/berlin/export
+
+# health check
+curl http://localhost:8000/health
 ```
 
 Response from `/results/berlin`:
@@ -89,6 +111,9 @@ Response from `/results/berlin`:
 {
   "city": "Berlin",
   "event_count": 42,
+  "page": 1,
+  "page_size": 50,
+  "total_pages": 1,
   "events": [
     {
       "title": "Klubnacht",
@@ -116,16 +141,14 @@ Response from `/results/berlin`:
 ## CLI
 
 ```bash
-cd lib/parser
-
 # single city
-python event_fetcher.py --cities berlin --days 7
+python -m techno_scan.event_fetcher --cities berlin --days 7
 
 # multiple cities in parallel
-python event_fetcher.py --cities amsterdam berlin london --parallel 3
+python -m techno_scan.event_fetcher --cities amsterdam berlin london --parallel 3
 
 # force full re-scan (ignore incremental cache)
-python event_fetcher.py --cities lisbon --full
+python -m techno_scan.event_fetcher --cities lisbon --full
 ```
 
 Output: interactive HTML report saved to `output/`.
@@ -134,44 +157,44 @@ Output: interactive HTML report saved to `output/`.
 
 ## Desktop GUI
 
-Double-click `launch_gui.bat` or run `python lib/parser/gui.py`.
+Run `python -m techno_scan.gui`.
 
-3-tab layout: **Scan** (city selection, date range, progress bar, live log), **Results** (per-city cards with report links), **Settings** (genre filters, scoring weights, cache TTLs — saves to `config.toml`).
+3-tab layout: **Scan** (city selection, date range, progress bar, live log), **Results** (per-city cards with report links), **Settings** (genre filters, scoring weights, cache TTLs -- saves to `config.toml`).
 
 ---
 
 ## Architecture
 
 ```
-lib/parser/
-  event_fetcher.py   — CLI entry point, pipeline orchestration, parallel runner
-  api.py             — FastAPI REST API with background scan execution
-  enrichment.py      — SC -> Discogs -> Bandcamp -> rising -> save pipeline
-  scoring.py         — filter, sort, scoring formula with configurable weights
-  discovery.py       — rising detection, artist similarity, label affinity
-  db.py              — SQLite storage (WAL mode, thread-safe, indexed)
-  sc.py              — SoundCloud API client
-  discogs.py         — Discogs REST API client
-  bandcamp.py        — Bandcamp scraper with semaphore rate limiting
-  club_scrapers.py   — @register_club decorator, per-room lineup parsing
-  http_utils.py      — @retry_on_failure with exponential backoff + jitter
-  html_creator.py    — Vue 3 interactive report generator
-  gui.py             — CustomTkinter desktop GUI
-  fuzzy_match.py     — name normalization, Levenshtein distance
-  tag_utils.py       — shared JSON tag parsing
-  stats.py           — pipeline metrics dataclass
-  config.py          — typed accessors from config.toml
-  tests/             — 175 tests across 17 files
+src/techno_scan/
+  event_fetcher.py   -- CLI entry point, pipeline orchestration, parallel runner
+  api.py             -- FastAPI REST API with background scan execution
+  enrichment.py      -- SC -> Discogs -> Bandcamp -> rising -> save pipeline
+  scoring.py         -- filter, sort, scoring formula with configurable weights
+  discovery.py       -- rising detection, artist similarity, label affinity
+  db.py              -- SQLite storage (WAL mode, thread-safe, indexed)
+  sc.py              -- SoundCloud API client
+  discogs.py         -- Discogs REST API client
+  bandcamp.py        -- Bandcamp scraper with semaphore rate limiting
+  club_scrapers.py   -- @register_club decorator, per-room lineup parsing
+  http_utils.py      -- @retry_on_failure with exponential backoff + jitter
+  html_creator.py    -- Vue 3 interactive report generator
+  gui.py             -- CustomTkinter desktop GUI
+  fuzzy_match.py     -- name normalization, Levenshtein distance
+  tag_utils.py       -- shared JSON tag parsing
+  stats.py           -- pipeline metrics dataclass
+  config.py          -- typed accessors from config.toml
+tests/               -- 179 tests across 18 files
 ```
 
 ### Key design decisions
 
-- **Thread-safe concurrency** — SQLite WAL mode with thread-local connections, per-source rate limiters with locks and semaphores, `ThreadPoolExecutor` for parallel city scans
-- **Incremental scans** — lineup hash comparison (SHA-256) via SQLite snapshots skips 60-70% of enrichment work on repeat runs
-- **Tiered cache TTLs** — 7 days for followed artists, 30 days for others, 14-day soft stale threshold triggers re-enrichment
-- **Retry resilience** — all external API calls wrapped with exponential backoff + jitter, respects `Retry-After` on 429s
-- **Registry pattern** — club scrapers use `@register_club("city")` decorator for clean extensibility
-- **Frozen dataclass** — `ScanContext` replaces mutable module globals for safe parallel execution
+- **Thread-safe concurrency** -- SQLite WAL mode with thread-local connections, per-source rate limiters with locks and semaphores, `ThreadPoolExecutor` for parallel city scans
+- **Incremental scans** -- lineup hash comparison (SHA-256) via SQLite snapshots skips 60-70% of enrichment work on repeat runs
+- **Tiered cache TTLs** -- 7 days for followed artists, 30 days for others, 14-day soft stale threshold triggers re-enrichment
+- **Retry resilience** -- all external API calls wrapped with exponential backoff + jitter, respects `Retry-After` on 429s
+- **Registry pattern** -- club scrapers use `@register_club("city")` decorator for clean extensibility
+- **Frozen dataclass** -- `ScanContext` replaces mutable module globals for safe parallel execution
 
 ---
 
@@ -186,6 +209,7 @@ SQLite at `cache/techno_scan.db` (WAL mode, thread-safe):
 | `found_events` | events featuring followed artists | permanent |
 | `artist_metrics_history` | SC/DC baselines for rising detection | permanent |
 | `scan_events` | lineup snapshots for incremental scans | overwritten each scan |
+| `api_results` | latest scan results per city for the API | overwritten each scan |
 
 ---
 
@@ -259,28 +283,30 @@ Club events are deduplicated against RA by venue + date matching.
 ## Testing
 
 ```bash
-pytest                                          # run all 175 tests
-pytest --cov=lib/parser lib/parser/tests/       # with coverage
-pytest lib/parser/tests/test_scoring.py -v      # specific file
+make test                              # run all 179 tests
+pytest tests/ --cov=src/techno_scan    # with coverage
+pytest tests/test_scoring.py -v        # specific file
 ```
 
-17 test files covering: config, SQLite storage, HTTP retry logic, SoundCloud/Discogs/Bandcamp API mocking, club scraper parsing, enrichment pipeline, scoring with discovery signals, genre filtering, fuzzy matching, event parsing, HTML helpers, following detection, FastAPI endpoints.
+18 test files covering: config, SQLite storage, HTTP retry logic, SoundCloud/Discogs/Bandcamp API mocking, club scraper parsing, enrichment pipeline, scoring with discovery signals, genre filtering, fuzzy matching, event parsing, HTML helpers, following detection, FastAPI endpoints (health, pagination, rate limiting, export).
 
 ---
 
 ## Setup
 
-**Requirements:** Python 3.11+ (tested on 3.13)
+**Requirements:** Python 3.12+ (tested on 3.13)
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-api.txt
 ```
 
 **Discogs API token** (optional, increases rate limit from 25 to 60 req/min):
 
 ```bash
-echo "YOUR_TOKEN" > lib/parser/.discogs_token
+echo "YOUR_TOKEN" > .discogs_token
 ```
+
+Or set `DISCOGS_TOKEN` as an environment variable (recommended for Docker).
 
 ---
 
@@ -293,7 +319,7 @@ echo "YOUR_TOKEN" > lib/parser/.discogs_token
 | `pandas` | event data processing |
 | `beautifulsoup4` + `lxml` | HTML parsing |
 | `loguru` | structured logging |
-| `pytest` | test framework |
+| `pytest` + `ruff` | testing and linting |
 
 ---
 

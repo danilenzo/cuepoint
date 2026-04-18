@@ -4,8 +4,7 @@ __pycache__/
 *.pyo
 .idea/
 output/
-lib/parser/cache/
-lib/parser/db/
+cache/
 .discogs_token
 .sc_credentials
 .sc_profile
@@ -26,4 +25,3 @@ chromedriver/
 get-pip.py
 lib/scratch/
 .vscode/
-lib/parser/.sc_profile

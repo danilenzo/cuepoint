@@ -9,14 +9,11 @@ RUN pip install --no-cache-dir -r requirements-api.txt
 COPY config.toml .
 COPY pyproject.toml .
 COPY external_libs/resident-advisor-events-scraper-main/ external_libs/resident-advisor-events-scraper-main/
-COPY lib/parser/ lib/parser/
+COPY src/ src/
 
 # Create directories for persistent data
-RUN mkdir -p output lib/parser/cache
-
-# API runs from lib/parser/ (relative imports)
-WORKDIR /app/lib/parser
+RUN mkdir -p output cache
 
 EXPOSE 8000
 
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "techno_scan.api:app", "--host", "0.0.0.0", "--port", "8000"]
