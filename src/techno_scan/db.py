@@ -364,9 +364,9 @@ def get_api_results(city: str) -> list[dict[str, Any]] | None:
 # Migration from old file-based storage
 # ---------------------------------------------------------------------------
 
-_CACHE_DIR = BASE_PATH / "lib/parser/cache"
+_CACHE_DIR = BASE_PATH / "cache"
 _OLD_URL_CACHE = _CACHE_DIR / "_artist_urls.json"
-_OLD_FOUND_DB = BASE_PATH / "lib/parser/db/Found"
+_OLD_FOUND_DB = BASE_PATH / "db/Found"
 
 
 def migrate_if_needed() -> None:

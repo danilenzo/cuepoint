@@ -16,9 +16,9 @@ jobs:
           python-version: "3.12"
       - run: pip install ruff
       - name: Lint
-        run: ruff check lib/parser/
+        run: ruff check src/ tests/
       - name: Format check
-        run: ruff format --check lib/parser/
+        run: ruff format --check src/ tests/
 
   typecheck:
     runs-on: ubuntu-latest
@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: mypy strict
-        run: mypy lib/parser/ --config-file pyproject.toml
+        run: mypy src/ --config-file pyproject.toml
 
   test:
     runs-on: ubuntu-latest
@@ -44,4 +44,4 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Run tests with coverage
-        run: pytest -v --tb=short --cov --cov-report=term-missing --cov-config=pyproject.toml
+        run: pytest tests/ -v --tb=short --cov=src/techno_scan --cov-report=term-missing --cov-config=pyproject.toml
