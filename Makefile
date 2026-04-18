@@ -1,8 +1,7 @@
 .PHONY: install test lint format run docker-up docker-down clean
 
 install:
-	pip install -r requirements-api.txt
-	pip install pytest ruff httpx
+	pip install -e ".[dev]"
 
 test:
 	python -m pytest tests/ -q

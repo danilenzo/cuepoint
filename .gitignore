@@ -16,6 +16,7 @@ cache/
 .coverage
 .pytest_cache/
 htmlcov/
+*.egg-info/
 
 .claude/
 CLAUDE.md

@@ -1,6 +1,6 @@
 """
 techno_scan GUI — Tab-based layout with Scan, Results, and Settings tabs.
-Run from lib/parser/: python gui.py
+Run with: python -m techno_scan.gui
 """
 
 import os

@@ -23,7 +23,6 @@ def test_empty_list():
 
 def test_multiple_events(sample_ra_event):
     """Multiple events produce correct row count."""
-    ev2 = {**sample_ra_event, "id": "lst-002"}
     ev2 = dict(sample_ra_event)
     ev2["id"] = "lst-002"
     ev2["event"] = {**sample_ra_event["event"], "id": "evt-200", "title": "Second Event"}

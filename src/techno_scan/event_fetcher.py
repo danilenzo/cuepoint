@@ -470,7 +470,7 @@ def get_data(ctx: ScanContext, progress_cb: Callable[[dict[str, Any]], None] | N
                 cur_flyer = club_df.at[best_ci, "flyer"]
                 cur_attending = club_df.at[best_ci, "attending"]
                 # NaN check: pandas stores None as NaN (float) in mixed columns
-                flyer_empty = cur_flyer is None or (isinstance(cur_flyer, float) and cur_flyer != cur_flyer)
+                flyer_empty = cur_flyer is None or pd.isna(cur_flyer)
                 if ra_flyer and flyer_empty:
                     club_df.at[best_ci, "flyer"] = ra_flyer
                 if ra_attending and (not cur_attending or cur_attending == 0):

@@ -2,19 +2,20 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements-api.txt .
-RUN pip install --no-cache-dir -r requirements-api.txt
-
-# Copy source code and config
-COPY config.toml .
+# Copy package definition first for layer caching
 COPY pyproject.toml .
-COPY external_libs/resident-advisor-events-scraper-main/ external_libs/resident-advisor-events-scraper-main/
 COPY src/ src/
+
+# Copy runtime config and external data
+COPY config.toml .
+COPY external_libs/resident-advisor-events-scraper-main/ external_libs/resident-advisor-events-scraper-main/
+
+# Install the package
+RUN pip install --no-cache-dir .
 
 # Create directories for persistent data
 RUN mkdir -p output cache
 
-ENV PYTHONPATH=/app/src
 ENV PORT=8000
 EXPOSE 8000
 

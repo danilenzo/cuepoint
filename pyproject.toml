@@ -1,8 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "techno_scan"
 version = "1.0.0"
 description = "Electronic music event scanner — fetches RA.co events, enriches artists via SoundCloud/Discogs/Bandcamp, filters and ranks by genre."
 requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.12.3",
+    "chardet>=5.1.0",
+    "loguru>=0.7.3",
+    "lxml>=6.0.2",
+    "numpy>=1.26.1",
+    "pandas>=2.1.2",
+    "python-dateutil>=2.8.2",
+    "requests>=2.32.5",
+    "wakepy>=0.10.1",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10",
+    "types-requests>=2.31",
+    "types-beautifulsoup4>=4.12",
+]
+gui = [
+    "customtkinter>=5.2.0",
+    "tkcalendar>=1.6.1",
+    "pyperclip>=1.9.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

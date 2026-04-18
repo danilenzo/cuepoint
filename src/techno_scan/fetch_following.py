@@ -2,8 +2,8 @@
 Fetches your SoundCloud following list and updates FOLLOWING in following.py.
 Uses SoundCloud's internal API — no browser/Selenium required.
 
-Usage (from lib/parser/):
-    python fetch_following.py https://soundcloud.com/your-username
+Usage:
+    python -m techno_scan.fetch_following https://soundcloud.com/your-username
 """
 
 import re
@@ -87,7 +87,7 @@ def fetch_following_slugs(profile_url: str) -> list[str]:
 
 
 def update_following_py(slugs: list[str]) -> None:
-    following_path = BASE_PATH / "lib/parser/following.py"
+    following_path = BASE_PATH / "src/techno_scan/following.py"
 
     with open(following_path, encoding="utf-8") as f:
         content = f.read()

@@ -21,8 +21,7 @@ docker compose up --build
 
 ```bash
 git clone <repo-url> && cd techno_scan
-pip install -r requirements-api.txt
-pip install pytest ruff httpx
+pip install -e ".[dev]"
 
 # CLI - scan Berlin events for the next 7 days
 python -m techno_scan.event_fetcher --cities berlin --days 7
@@ -34,7 +33,7 @@ uvicorn techno_scan.api:app --reload --port 8000
 Or use the Makefile:
 
 ```bash
-make install    # install dependencies
+make install    # install package + dev tools
 make run        # start API server
 make test       # run test suite
 make lint       # check linting
@@ -310,7 +309,7 @@ pytest tests/test_scoring.py -v        # specific file
 **Requirements:** Python 3.12+ (tested on 3.13)
 
 ```bash
-pip install -r requirements-api.txt
+pip install -e ".[dev]"
 ```
 
 **Discogs API token** (optional, increases rate limit from 25 to 60 req/min):
