@@ -128,7 +128,7 @@ class CityResultsResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
-    events: list[EventResult]
+    events: list[dict[str, Any]]
 
 
 class HealthResponse(BaseModel):
@@ -223,8 +223,11 @@ def _run_scan_with_capture(scan_id: str, req: ScanRequest) -> None:
         for city_key in req.cities:
             area, city_name, city_slug = CITIES[city_key]
             ctx = ScanContext(
-                area=area, city_name=city_name, city_slug=city_slug,
-                start_date=start_date, days_ahead=req.days,
+                area=area,
+                city_name=city_name,
+                city_slug=city_slug,
+                start_date=start_date,
+                days_ahead=req.days,
             )
 
             if req.full:
@@ -252,20 +255,20 @@ def _run_scan_with_capture(scan_id: str, req: ScanRequest) -> None:
                     stats.finish()
                     html_res = create_html(sorted_df, stats_html=stats.to_html_footer())
                     file_path = (
-                        OUTPUT_PATH + city_name + " "
-                        + start_date.strftime("%Y-%m-%d") + " "
-                        + str(req.days) + ".html"
+                        OUTPUT_PATH + city_name + " " + start_date.strftime("%Y-%m-%d") + " " + str(req.days) + ".html"
                     )
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(html_res)
                     logger.info(f"Report saved: {file_path}")
 
-                    raw_results.append({
-                        "city": city_name,
-                        "events": len(sorted_df),
-                        "followed": int(sorted_df.get("_score", pd.Series()).gt(500_000).sum()),
-                        "file_path": file_path,
-                    })
+                    raw_results.append(
+                        {
+                            "city": city_name,
+                            "events": len(sorted_df),
+                            "followed": int(sorted_df.get("_score", pd.Series()).gt(500_000).sum()),
+                            "file_path": file_path,
+                        }
+                    )
                 else:
                     stats.finish()
                     store.save_api_results(city_name.lower(), [])
@@ -275,10 +278,15 @@ def _run_scan_with_capture(scan_id: str, req: ScanRequest) -> None:
                 stats.record_error(str(city_err))
                 stats.finish()
                 logger.error(f"Scan failed for {city_name}: {city_err}")
-                raw_results.append({
-                    "city": city_name, "events": 0, "followed": 0,
-                    "file_path": None, "error": str(city_err),
-                })
+                raw_results.append(
+                    {
+                        "city": city_name,
+                        "events": 0,
+                        "followed": 0,
+                        "file_path": None,
+                        "error": str(city_err),
+                    }
+                )
 
         _update_scan(scan_id, status="completed", finished_at=datetime.now().isoformat(), results=raw_results)
 
@@ -452,16 +460,18 @@ def export_results(city: str) -> StreamingResponse:
     writer = csv.writer(output)
     writer.writerow(["event_id", "title", "date", "venue", "attending", "score", "genres", "url"])
     for ev in events:
-        writer.writerow([
-            ev.get("event_id", ""),
-            ev.get("title", ""),
-            ev.get("event_date", ""),
-            ev.get("venue_name", ""),
-            ev.get("attending", 0),
-            ev.get("score", 0),
-            "; ".join(ev.get("genres", [])),
-            ev.get("event_url", ""),
-        ])
+        writer.writerow(
+            [
+                ev.get("event_id", ""),
+                ev.get("title", ""),
+                ev.get("event_date", ""),
+                ev.get("venue_name", ""),
+                ev.get("attending", 0),
+                ev.get("score", 0),
+                "; ".join(ev.get("genres", [])),
+                ev.get("event_url", ""),
+            ]
+        )
 
     output.seek(0)
     filename = f"{city_display.lower().replace(' ', '_')}_events.csv"
