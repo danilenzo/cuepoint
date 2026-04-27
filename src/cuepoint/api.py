@@ -21,6 +21,7 @@ import csv
 import io
 import time
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
@@ -37,9 +38,10 @@ from .event_fetcher import CITIES, close_clients
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     await close_clients()
+    store.close_db()
 
 
 app = FastAPI(

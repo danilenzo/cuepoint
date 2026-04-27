@@ -34,7 +34,8 @@ def _get_conn() -> sqlite3.Connection:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.row_factory = sqlite3.Row
         _local.conn = conn
-    return _local.conn  # type: ignore[no-any-return]
+    result: sqlite3.Connection = _local.conn
+    return result
 
 
 def close_db() -> None:
@@ -102,7 +103,8 @@ def get_artist_url(artist_id: str) -> dict[str, Any] | None:
     conn = _get_conn()
     row = conn.execute("SELECT data FROM artist_urls WHERE artist_id = ?", (str(artist_id),)).fetchone()
     if row:
-        return json.loads(row["data"])  # type: ignore[no-any-return]
+        result: dict[str, Any] = json.loads(row["data"])
+        return result
     return None
 
 
@@ -304,7 +306,8 @@ def get_scan_event_artist_ids(city: str, event_id: str) -> list[str] | None:
         (city, event_id),
     ).fetchone()
     if row:
-        return json.loads(row["artist_ids"])  # type: ignore[no-any-return]
+        ids: list[str] = json.loads(row["artist_ids"])
+        return ids
     return None
 
 
@@ -363,7 +366,8 @@ def get_api_results(city: str) -> list[dict[str, Any]] | None:
         (city,),
     ).fetchone()
     if row:
-        return json.loads(row["data"])  # type: ignore[no-any-return]
+        results: list[dict[str, Any]] = json.loads(row["data"])
+        return results
     return None
 
 

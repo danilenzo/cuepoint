@@ -47,7 +47,6 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore::DeprecationWarning:dateutil",
     "ignore::DeprecationWarning:pytz",
-    "ignore:unclosed database:ResourceWarning",
 ]
 
 [tool.ruff]

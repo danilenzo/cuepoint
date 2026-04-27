@@ -2,7 +2,7 @@
 
 Multi-source ETL pipeline that scrapes electronic music events from RA.co and club websites, enriches artist data from three external APIs (SoundCloud, Discogs, Bandcamp), scores and ranks events using a configurable algorithm, and serves results via a FastAPI REST API or interactive HTML report.
 
-179 tests. Docker support. Zero Selenium -- all HTTP via `requests`.
+232 tests. Docker support. Zero Selenium -- all HTTP via `requests`.
 
 ---
 
@@ -196,7 +196,7 @@ src/cuepoint/
   tag_utils.py       -- shared JSON tag parsing
   stats.py           -- pipeline metrics dataclass
   config.py          -- typed accessors from config.toml
-tests/               -- 179 tests across 18 files
+tests/               -- 232 tests across 22 files
 ```
 
 ### Key design decisions
@@ -295,7 +295,7 @@ Club events are deduplicated against RA by venue + date matching.
 ## Testing
 
 ```bash
-make test                              # run all 179 tests
+make test                              # run all 232 tests
 pytest tests/ --cov=src/cuepoint    # with coverage
 pytest tests/test_scoring.py -v        # specific file
 ```

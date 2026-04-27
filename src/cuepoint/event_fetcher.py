@@ -127,7 +127,8 @@ async def _fetch_ra_artist(artist_id: str | int) -> dict[str, Any] | None:
     client = await _get_ra_client()
     r = await client.post(URL, headers={"Referer": RA}, json=get_artist_payload_by_id(artist_id))
     r.raise_for_status()
-    return r.json()["data"]["artist"]  # type: ignore[no-any-return]
+    result: dict[str, Any] | None = r.json()["data"]["artist"]
+    return result
 
 
 class EventFetcher:
@@ -153,7 +154,8 @@ class EventFetcher:
             logger.warning(f"RA API unexpected response: {data}")
             return []
 
-        return data["data"]["eventListings"]["data"]  # type: ignore[no-any-return]
+        events: list[dict[str, Any]] = data["data"]["eventListings"]["data"]
+        return events
 
     @async_retry_on_failure(max_retries=2, base_delay=1.0)
     async def _fetch_page(self) -> dict[str, Any]:
@@ -161,7 +163,8 @@ class EventFetcher:
         client = await _get_ra_client()
         r = await client.post(URL, headers={"Referer": self.referer}, json=self.payload)
         r.raise_for_status()
-        return r.json()  # type: ignore[no-any-return]
+        resp: dict[str, Any] = r.json()
+        return resp
 
     async def fetch_all_events(self) -> list[dict[str, Any]]:
         all_events: list[dict[str, Any]] = []
