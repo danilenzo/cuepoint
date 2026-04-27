@@ -2,7 +2,7 @@
 
 Multi-source ETL pipeline that scrapes electronic music events from RA.co and club websites, enriches artist data from three external APIs (SoundCloud, Discogs, Bandcamp), scores and ranks events using a configurable algorithm, and serves results via a FastAPI REST API or interactive HTML report.
 
-232 tests. Docker support. Zero Selenium -- all HTTP via `requests`.
+232 tests. Docker support. Zero Selenium -- all HTTP via `httpx`/`requests`.
 
 ---
 
@@ -326,7 +326,8 @@ Or set `DISCOGS_TOKEN` as an environment variable (recommended for Docker).
 
 | Package | Purpose |
 |---------|---------|
-| `requests` | all HTTP (RA, SC, Discogs, Bandcamp, club scrapers) |
+| `httpx` | async HTTP (RA, SC, Discogs, Bandcamp, club scrapers, flyers) |
+| `requests` | sync HTTP (fetch_following script) |
 | `fastapi` + `uvicorn` | REST API |
 | `pandas` | event data processing |
 | `beautifulsoup4` + `lxml` | HTML parsing |

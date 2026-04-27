@@ -45,7 +45,7 @@ All PRs must pass `make test` and `make lint` before merging.
 ```
 src/cuepoint/     # main package
 tests/               # test suite
-config.toml          # runtime configuration
+config.toml.example  # default configuration (copy to config.toml to customise)
 cache/               # SQLite database (gitignored)
 output/              # generated HTML reports (gitignored)
 ```

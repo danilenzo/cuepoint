@@ -6,6 +6,6 @@ services:
     volumes:
       - ./output:/app/output
       - ./cache:/app/cache
-      - ./config.toml:/app/config.toml:ro
+      - ${CONFIG_FILE:-./config.toml.example}:/app/config.toml:ro
     environment:
       - DISCOGS_TOKEN=${DISCOGS_TOKEN:-}
