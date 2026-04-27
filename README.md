@@ -192,10 +192,15 @@ src/cuepoint/
   http_utils.py      -- @retry_on_failure with exponential backoff + jitter
   html_creator.py    -- Vue 3 interactive report generator
   gui.py             -- CustomTkinter desktop GUI
+  following.py       -- followed artist set, URL matching
+  fetch_following.py -- sync script to refresh following list from SoundCloud
+  flyers.py          -- flyer image download, resize, base64 embedding
   fuzzy_match.py     -- name normalization, Levenshtein distance
+  payloads.py        -- GraphQL query builders for RA API
   tag_utils.py       -- shared JSON tag parsing
   stats.py           -- pipeline metrics dataclass
   config.py          -- typed accessors from config.toml
+  generic.py         -- global constants (URLs, paths)
 tests/               -- 232 tests across 22 files
 ```
 
@@ -241,13 +246,13 @@ artist_score = (sc_followers * genre_match / sc_weight)
              + recency_bonus * decay_factor
 ```
 
-All weights configurable in `config.toml`.
+All weights configurable in `config.toml` (copy `config.toml.example` to customise).
 
 ---
 
 ## Configuration
 
-All settings in `config.toml`:
+All settings in `config.toml` (defaults in `config.toml.example`):
 
 ```toml
 [general]
