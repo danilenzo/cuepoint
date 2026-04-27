@@ -1,4 +1,43 @@
+import copy
 from typing import Any
+
+_EVENT_LISTINGS_TEMPLATE: dict[str, Any] = {
+    "operationName": "GET_EVENT_LISTINGS",
+    "variables": {
+        "filters": {
+            "areas": {"eq": "__AREAS__"},
+            "listingDate": {
+                "gte": "__LISTING_DATE_GTE__",
+                "lte": "__LISTING_DATE_LTE__",
+            },
+        },
+        "filterOptions": {"genre": True},
+        "pageSize": 20,
+        "page": 1,
+    },
+    "query": (
+        "query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $filterOptions: "
+        "FilterOptionsInputDtoInput, $page: Int, $pageSize: Int) {eventListings("
+        "filters: $filters, filterOptions: $filterOptions, pageSize: $pageSize, "
+        "page: $page) {data {id listingDate event {...eventListingsFields artists "
+        "{id name __typename} __typename} __typename} filterOptions {genre {label "
+        "value __typename} __typename} totalResults __typename}}"
+        "fragment eventListingsFields on Event {id date startTime endTime title "
+        "contentUrl flyerFront isTicketed attending queueItEnabled newEventForm "
+        "promoters {id name contentUrl live hasTicketAccess __typename} tickets("
+        "queryType: AVAILABLE) {id title validType priceRetail onSaleFrom __typename} "
+        "genres {id name slug __typename} images {id filename alt type crop __typename} "
+        "pick {id blurb __typename} venue {id name contentUrl live __typename} __typename}"
+    ),
+}
+
+
+def get_event_listings_payload(areas: int, listing_date_gte: str, listing_date_lte: str) -> dict[str, Any]:
+    payload = copy.deepcopy(_EVENT_LISTINGS_TEMPLATE)
+    payload["variables"]["filters"]["areas"]["eq"] = areas
+    payload["variables"]["filters"]["listingDate"]["gte"] = listing_date_gte
+    payload["variables"]["filters"]["listingDate"]["lte"] = listing_date_lte
+    return payload
 
 
 def get_artist_payload(slug: str) -> dict[str, Any]:

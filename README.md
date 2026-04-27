@@ -1,4 +1,4 @@
-# techno_scan
+# cuepoint
 
 Multi-source ETL pipeline that scrapes electronic music events from RA.co and club websites, enriches artist data from three external APIs (SoundCloud, Discogs, Bandcamp), scores and ranks events using a configurable algorithm, and serves results via a FastAPI REST API or interactive HTML report.
 
@@ -11,7 +11,7 @@ Multi-source ETL pipeline that scrapes electronic music events from RA.co and cl
 ### Docker (recommended)
 
 ```bash
-git clone <repo-url> && cd techno_scan
+git clone <repo-url> && cd cuepoint
 docker compose up --build
 # API running at http://localhost:8000
 # Swagger UI at http://localhost:8000/docs
@@ -20,14 +20,14 @@ docker compose up --build
 ### Local
 
 ```bash
-git clone <repo-url> && cd techno_scan
+git clone <repo-url> && cd cuepoint
 pip install -e ".[dev]"
 
 # CLI - scan Berlin events for the next 7 days
-python -m techno_scan.event_fetcher --cities berlin --days 7
+python -m cuepoint.event_fetcher --cities berlin --days 7
 
 # API - start the server
-uvicorn techno_scan.api:app --reload --port 8000
+uvicorn cuepoint.api:app --reload --port 8000
 ```
 
 Or use the Makefile:
@@ -72,7 +72,7 @@ fly launch
 Start the server:
 
 ```bash
-uvicorn techno_scan.api:app --reload --port 8000
+uvicorn cuepoint.api:app --reload --port 8000
 ```
 
 Interactive docs at `http://localhost:8000/docs`
@@ -154,13 +154,13 @@ Response from `/results/berlin`:
 
 ```bash
 # single city
-python -m techno_scan.event_fetcher --cities berlin --days 7
+python -m cuepoint.event_fetcher --cities berlin --days 7
 
 # multiple cities in parallel
-python -m techno_scan.event_fetcher --cities amsterdam berlin london --parallel 3
+python -m cuepoint.event_fetcher --cities amsterdam berlin london --parallel 3
 
 # force full re-scan (ignore incremental cache)
-python -m techno_scan.event_fetcher --cities lisbon --full
+python -m cuepoint.event_fetcher --cities lisbon --full
 ```
 
 Output: interactive HTML report saved to `output/`.
@@ -169,7 +169,7 @@ Output: interactive HTML report saved to `output/`.
 
 ## Desktop GUI
 
-Run `python -m techno_scan.gui`.
+Run `python -m cuepoint.gui`.
 
 3-tab layout: **Scan** (city selection, date range, progress bar, live log), **Results** (per-city cards with report links), **Settings** (genre filters, scoring weights, cache TTLs -- saves to `config.toml`).
 
@@ -178,7 +178,7 @@ Run `python -m techno_scan.gui`.
 ## Architecture
 
 ```
-src/techno_scan/
+src/cuepoint/
   event_fetcher.py   -- CLI entry point, pipeline orchestration, parallel runner
   api.py             -- FastAPI REST API with background scan execution
   enrichment.py      -- SC -> Discogs -> Bandcamp -> rising -> save pipeline
@@ -212,7 +212,7 @@ tests/               -- 179 tests across 18 files
 
 ## Data storage
 
-SQLite at `cache/techno_scan.db` (WAL mode, thread-safe):
+SQLite at `cache/cuepoint.db` (WAL mode, thread-safe):
 
 | Table | Purpose | TTL |
 |-------|---------|-----|
@@ -296,7 +296,7 @@ Club events are deduplicated against RA by venue + date matching.
 
 ```bash
 make test                              # run all 179 tests
-pytest tests/ --cov=src/techno_scan    # with coverage
+pytest tests/ --cov=src/cuepoint    # with coverage
 pytest tests/test_scoring.py -v        # specific file
 ```
 

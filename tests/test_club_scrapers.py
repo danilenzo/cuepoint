@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from techno_scan.club_scrapers import (
+from cuepoint.club_scrapers import (
     _event_dict,
     _make_ticket,
     _parse_lineup,
@@ -14,6 +15,8 @@ from techno_scan.club_scrapers import (
     scrape_bassiani,
     scrape_berghain,
 )
+
+_run = asyncio.run
 
 # ---------------------------------------------------------------------------
 # Helper functions
@@ -90,8 +93,9 @@ class TestEventDict:
 
 
 class TestScrapeBassiani:
-    @patch("techno_scan.club_scrapers._session.get")
-    def test_parses_api_response(self, mock_get):
+    @patch("cuepoint.club_scrapers._get_client", new_callable=AsyncMock)
+    def test_parses_api_response(self, mock_get_client):
+        mock_client = AsyncMock()
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
@@ -116,20 +120,21 @@ class TestScrapeBassiani:
                 ]
             }
         }
-        mock_get.return_value = mock_resp
+        mock_client.get.return_value = mock_resp
+        mock_get_client.return_value = mock_client
 
         start = datetime(2026, 4, 15)
         end = datetime(2026, 4, 20)
-        events = scrape_bassiani(start, end)
+        events = _run(scrape_bassiani(start, end))
         assert len(events) == 1
         assert events[0]["venue_name"] == "Bassiani"
-        # 3 artists across 2 rooms
         assert len(events[0]["_prefilled_artists_info"]) == 3
         assert events[0]["_prefilled_artists_info"][0]["floor"] == "Main Hall"
         assert events[0]["tickets"][0]["priceRetail"] == 40.0
 
-    @patch("techno_scan.club_scrapers._session.get")
-    def test_out_of_range_skipped(self, mock_get):
+    @patch("cuepoint.club_scrapers._get_client")
+    def test_out_of_range_skipped(self, mock_get_client):
+        mock_client = MagicMock()
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
@@ -139,14 +144,17 @@ class TestScrapeBassiani:
                 ]
             }
         }
-        mock_get.return_value = mock_resp
-        events = scrape_bassiani(datetime(2026, 4, 15), datetime(2026, 4, 20))
+        mock_client.get.return_value = mock_resp
+        mock_get_client.return_value = mock_client
+        events = _run(scrape_bassiani(datetime(2026, 4, 15), datetime(2026, 4, 20)))
         assert len(events) == 0
 
-    @patch("techno_scan.club_scrapers._session.get")
-    def test_api_error_returns_empty(self, mock_get):
-        mock_get.side_effect = Exception("API down")
-        events = scrape_bassiani(datetime(2026, 4, 15), datetime(2026, 4, 20))
+    @patch("cuepoint.club_scrapers._get_client")
+    def test_api_error_returns_empty(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_client.get.side_effect = Exception("API down")
+        mock_get_client.return_value = mock_client
+        events = _run(scrape_bassiani(datetime(2026, 4, 15), datetime(2026, 4, 20)))
         assert events == []
 
 
@@ -156,8 +164,9 @@ class TestScrapeBassiani:
 
 
 class TestScrapeBerghain:
-    @patch("techno_scan.club_scrapers._session.get")
-    def test_parses_program_page(self, mock_get):
+    @patch("cuepoint.club_scrapers._get_client", new_callable=AsyncMock)
+    def test_parses_program_page(self, mock_get_client):
+        mock_client = AsyncMock()
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.text = """
@@ -172,17 +181,19 @@ class TestScrapeBerghain:
         </a>
         </body></html>
         """
-        mock_get.return_value = mock_resp
+        mock_client.get.return_value = mock_resp
+        mock_get_client.return_value = mock_client
 
-        events = scrape_berghain(datetime(2026, 4, 15), datetime(2026, 4, 20))
+        events = _run(scrape_berghain(datetime(2026, 4, 15), datetime(2026, 4, 20)))
         assert len(events) == 1
         artists = events[0]["_prefilled_artists_info"]
         assert len(artists) == 2
         assert artists[0]["floor"] == "Berghain"
         assert artists[1]["floor"] == "Panorama Bar"
 
-    @patch("techno_scan.club_scrapers._session.get")
-    def test_out_of_range_skipped(self, mock_get):
+    @patch("cuepoint.club_scrapers._get_client")
+    def test_out_of_range_skipped(self, mock_get_client):
+        mock_client = MagicMock()
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.text = """
@@ -195,6 +206,7 @@ class TestScrapeBerghain:
         </a>
         </body></html>
         """
-        mock_get.return_value = mock_resp
-        events = scrape_berghain(datetime(2026, 4, 15), datetime(2026, 4, 20))
+        mock_client.get.return_value = mock_resp
+        mock_get_client.return_value = mock_client
+        events = _run(scrape_berghain(datetime(2026, 4, 15), datetime(2026, 4, 20)))
         assert len(events) == 0

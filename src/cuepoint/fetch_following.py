@@ -1,9 +1,13 @@
 """
-Fetches your SoundCloud following list and updates FOLLOWING in following.py.
+Fetches your SoundCloud following list and saves to following.txt.
 Uses SoundCloud's internal API — no browser/Selenium required.
 
 Usage:
-    python -m techno_scan.fetch_following https://soundcloud.com/your-username
+    python -m cuepoint.fetch_following https://soundcloud.com/your-username
+
+On first run the profile URL is saved to .sc_profile. Subsequent runs with a
+different URL are rejected unless --force is passed — this prevents accidentally
+overwriting your following list with someone else's.
 """
 
 import re
@@ -12,6 +16,29 @@ import sys
 import requests
 
 from .generic import BASE_PATH
+
+_PROFILE_FILE = BASE_PATH / ".sc_profile"
+_FOLLOWING_FILE = BASE_PATH / "following.txt"
+
+
+def _check_profile_lock(profile_url: str, *, force: bool) -> None:
+    """Ensure we're syncing the same profile as last time."""
+    normalised = profile_url.rstrip("/").lower()
+
+    if _PROFILE_FILE.exists():
+        saved = _PROFILE_FILE.read_text(encoding="utf-8").strip()
+        if saved != normalised:
+            if force:
+                print(f"--force: switching profile from {saved} to {normalised}")
+            else:
+                print(
+                    f"ERROR: saved profile is {saved}, "
+                    f"but you passed {normalised}.\n"
+                    f"Pass --force to overwrite with the new profile's followings."
+                )
+                sys.exit(1)
+
+    _PROFILE_FILE.write_text(normalised, encoding="utf-8")
 
 
 def get_client_id(session: requests.Session) -> str:
@@ -86,34 +113,49 @@ def fetch_following_slugs(profile_url: str) -> list[str]:
     return slugs
 
 
-def update_following_py(slugs: list[str]) -> None:
-    following_path = BASE_PATH / "src/techno_scan/following.py"
+def update_following(slugs: list[str]) -> None:
+    """Write slugs to following.txt and reload in-memory set."""
+    _FOLLOWING_FILE.write_text("\n".join(sorted(slugs)) + "\n", encoding="utf-8")
 
-    with open(following_path, encoding="utf-8") as f:
-        content = f.read()
+    from . import following as _fmod
 
-    items_str = ", ".join(repr(s) for s in slugs)
-    new_list = f"FOLLOWING = set([{items_str}])"
+    _fmod.reload_following()
 
-    new_content = re.sub(
-        r"FOLLOWING\s*=\s*(?:set\()?\[.*?\]\)?",
-        new_list,
-        content,
-        flags=re.DOTALL,
-    )
+    print(f"following.txt updated with {len(slugs)} artists.")
 
-    with open(following_path, "w", encoding="utf-8") as f:
-        f.write(new_content)
 
-    print(f"following.py updated with {len(slugs)} artists.")
+def show_following() -> None:
+    """Print the current FOLLOWING set."""
+    from .following import FOLLOWING
+
+    if not FOLLOWING:
+        print("FOLLOWING is empty. Run: python -m cuepoint.fetch_following <profile_url>")
+        return
+
+    print(f"Currently following {len(FOLLOWING)} artists:\n")
+    for slug in sorted(FOLLOWING):
+        print(f"  soundcloud.com{slug}")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python fetch_following.py https://soundcloud.com/your-username")
+    if "--show" in sys.argv:
+        show_following()
+        sys.exit(0)
+
+    force = "--force" in sys.argv
+    args = [a for a in sys.argv[1:] if a not in ("--force", "--show")]
+
+    if len(args) < 1:
+        print(
+            "Usage:\n"
+            "  python -m cuepoint.fetch_following <profile_url> [--force]\n"
+            "  python -m cuepoint.fetch_following --show"
+        )
         sys.exit(1)
 
-    profile_url = sys.argv[1]
+    profile_url = args[0]
+
+    _check_profile_lock(profile_url, force=force)
 
     slugs = fetch_following_slugs(profile_url)
 
@@ -122,5 +164,5 @@ if __name__ == "__main__":
         sys.exit(1)
 
     print(f"Total: {len(slugs)} followings fetched.")
-    update_following_py(slugs)
+    update_following(slugs)
     print("Done.")

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture(autouse=True)
 def _patch_imports(monkeypatch: pytest.MonkeyPatch) -> None:
     """Prevent api.py from triggering real DB init or config loading."""
-    import techno_scan.db as store_mod
+    import cuepoint.db as store_mod
 
     monkeypatch.setattr(store_mod, "init_db", lambda: None)
 
@@ -21,19 +21,18 @@ def _patch_imports(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def _clear_api_state() -> None:
     """Reset in-memory API state between tests."""
-    import techno_scan.api as api_mod
+    import cuepoint.api as api_mod
 
-    with api_mod._scans_lock:
-        api_mod._scans.clear()
-    with api_mod._rate_lock:
-        api_mod._rate_log.clear()
+    api_mod._scans.clear()
+    api_mod._rate_log.clear()
 
 
 @pytest.fixture()
 def client() -> TestClient:
-    from techno_scan.api import app
+    from cuepoint.api import app
 
-    return TestClient(app)
+    with TestClient(app) as c:
+        yield c
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +44,7 @@ def test_root(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["name"] == "techno_scan API"
+    assert body["name"] == "cuepoint API"
     assert "cities" in body
     assert isinstance(body["cities"], list)
     assert len(body["cities"]) > 0
@@ -96,7 +95,7 @@ def test_scan_empty_cities(client: TestClient) -> None:
     assert resp.status_code == 422  # min_length=1 validation
 
 
-@patch("techno_scan.api._run_scan_with_capture")
+@patch("cuepoint.api._run_scan")
 def test_scan_starts_background(mock_run: MagicMock, client: TestClient) -> None:
     """POST /scan should return immediately with a scan_id."""
     mock_run.side_effect = lambda *a, **kw: None
@@ -115,12 +114,12 @@ def test_scan_starts_background(mock_run: MagicMock, client: TestClient) -> None
 # ---------------------------------------------------------------------------
 
 
-@patch("techno_scan.api._run_scan_with_capture")
+@patch("cuepoint.api._run_scan")
 def test_scan_rate_limit(mock_run: MagicMock, client: TestClient) -> None:
     """Exceeding rate limit returns 429."""
     mock_run.side_effect = lambda *a, **kw: None
 
-    import techno_scan.api as api_mod
+    import cuepoint.api as api_mod
 
     # Fire up to the limit
     for _ in range(api_mod._RATE_LIMIT_MAX):
@@ -145,7 +144,7 @@ def test_status_empty(client: TestClient) -> None:
     assert resp.json() == []
 
 
-@patch("techno_scan.api._run_scan_with_capture")
+@patch("cuepoint.api._run_scan")
 def test_status_after_scan(mock_run: MagicMock, client: TestClient) -> None:
     mock_run.side_effect = lambda *a, **kw: None
 
@@ -167,7 +166,7 @@ def test_status_not_found(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-@patch("techno_scan.api._run_scan_with_capture")
+@patch("cuepoint.api._run_scan")
 def test_status_by_id(mock_run: MagicMock, client: TestClient) -> None:
     mock_run.side_effect = lambda *a, **kw: None
 
@@ -191,14 +190,14 @@ def test_results_unknown_city(client: TestClient) -> None:
     assert "Unknown city" in resp.json()["detail"]
 
 
-@patch("techno_scan.api.store.get_api_results", return_value=None)
+@patch("cuepoint.api.store.get_api_results", return_value=None)
 def test_results_no_scan_yet(mock_get: MagicMock, client: TestClient) -> None:
     resp = client.get("/results/berlin")
     assert resp.status_code == 404
     assert "No results" in resp.json()["detail"]
 
 
-@patch("techno_scan.api.store.get_api_results")
+@patch("cuepoint.api.store.get_api_results")
 def test_results_with_data(mock_get: MagicMock, client: TestClient) -> None:
     sample_events: list[dict[str, Any]] = [
         {
@@ -231,7 +230,7 @@ def test_results_with_data(mock_get: MagicMock, client: TestClient) -> None:
     assert body["events"][0]["venue_name"] == "Berghain"
 
 
-@patch("techno_scan.api.store.get_api_results")
+@patch("cuepoint.api.store.get_api_results")
 def test_results_pagination(mock_get: MagicMock, client: TestClient) -> None:
     events = [{"event_id": str(i), "title": f"Event {i}"} for i in range(75)]
     mock_get.return_value = events
@@ -255,7 +254,7 @@ def test_results_pagination(mock_get: MagicMock, client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("techno_scan.api.store.get_api_results")
+@patch("cuepoint.api.store.get_api_results")
 def test_export_csv(mock_get: MagicMock, client: TestClient) -> None:
     mock_get.return_value = [
         {
@@ -290,7 +289,7 @@ def test_export_unknown_city(client: TestClient) -> None:
 
 
 def test_serialize_artist() -> None:
-    from techno_scan.api import _serialize_artist
+    from cuepoint.api import _serialize_artist
 
     info: dict[str, Any] = {
         "name": "Test DJ",
@@ -315,6 +314,6 @@ def test_serialize_artist() -> None:
 
 
 def test_serialize_artist_none() -> None:
-    from techno_scan.api import _serialize_artist
+    from cuepoint.api import _serialize_artist
 
     assert _serialize_artist(None) == {}

@@ -1,12 +1,12 @@
 # Contributing
 
-Thanks for your interest in techno_scan! Here's how to get set up.
+Thanks for your interest in cuepoint! Here's how to get set up.
 
 ## Setup
 
 ```bash
 git clone <repo-url>
-cd techno_scan
+cd cuepoint
 python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -e ".[dev]"
@@ -17,7 +17,7 @@ pip install -e ".[dev]"
 ```bash
 # API server
 make run
-# or: uvicorn techno_scan.api:app --reload --port 8000
+# or: uvicorn cuepoint.api:app --reload --port 8000
 
 # With Docker
 make docker-up
@@ -43,7 +43,7 @@ All PRs must pass `make test` and `make lint` before merging.
 ## Project structure
 
 ```
-src/techno_scan/     # main package
+src/cuepoint/     # main package
 tests/               # test suite
 config.toml          # runtime configuration
 cache/               # SQLite database (gitignored)

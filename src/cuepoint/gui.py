@@ -1,6 +1,6 @@
 """
-techno_scan GUI — Tab-based layout with Scan, Results, and Settings tabs.
-Run with: python -m techno_scan.gui
+cuepoint GUI — Tab-based layout with Scan, Results, and Settings tabs.
+Run with: python -m cuepoint.gui
 """
 
 import os
@@ -23,8 +23,8 @@ from tkcalendar import DateEntry
 
 from . import db as store
 from .enrichment import cleanup_cache
-from .event_fetcher import CITIES, run_for_city
-from .fetch_following import fetch_following_slugs, update_following_py
+from .event_fetcher import CITIES, run_for_city_sync
+from .fetch_following import fetch_following_slugs, update_following
 from .generic import BASE_PATH
 
 _SC_PROFILE_PATH = BASE_PATH / ".sc_profile"
@@ -51,7 +51,7 @@ _TEXT_DIM = "#777777"
 class TechnoScanApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("techno_scan")
+        self.title("cuepoint")
         self.geometry("920x840")
         self.minsize(780, 680)
         self.resizable(True, True)
@@ -109,7 +109,7 @@ class TechnoScanApp(ctk.CTk):
 
     def _build_sc_section(self, parent):
         frame = ctk.CTkFrame(parent, fg_color=_BG_CARD, corner_radius=10)
-        frame.grid(row=0, column=0, padx=8, pady=(8, 4), sticky="ew")
+        frame.grid(row=0, column=0, padx=8, pady=(8, 6), sticky="ew")
         frame.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(
@@ -124,7 +124,7 @@ class TechnoScanApp(ctk.CTk):
             fg_color=_BG_INPUT,
             border_color=_BG_INPUT,
             corner_radius=8,
-            height=34,
+            height=36,
         )
         self.sc_url_entry.grid(row=1, column=1, padx=4, pady=8, sticky="ew")
 
@@ -159,10 +159,11 @@ class TechnoScanApp(ctk.CTk):
 
     def _build_cities_section(self, parent):
         frame = ctk.CTkFrame(parent, fg_color=_BG_CARD, corner_radius=10)
-        frame.grid(row=1, column=0, padx=8, pady=4, sticky="ew")
+        frame.grid(row=1, column=0, padx=8, pady=6, sticky="ew")
+        frame.grid_columnconfigure(0, weight=1)
 
         header = ctk.CTkFrame(frame, fg_color="transparent")
-        header.grid(row=0, column=0, columnspan=8, padx=14, pady=(12, 6), sticky="ew")
+        header.grid(row=0, column=0, padx=14, pady=(12, 6), sticky="ew")
         header.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(header, text="Cities", font=ctk.CTkFont(size=13, weight="bold"), text_color=_ACCENT).grid(
@@ -194,28 +195,49 @@ class TechnoScanApp(ctk.CTk):
             command=lambda: self._set_all_cities(False),
         ).pack(side="left", padx=2)
 
+        self._city_container = ctk.CTkFrame(frame, fg_color="transparent")
+        self._city_container.grid(row=1, column=0, padx=10, pady=(2, 10), sticky="ew")
+
         self.city_vars = {}
+        self._city_cbs = []
         cities = sorted(CITIES.keys())
-        cols = 6
-        for i, city in enumerate(cities):
+        for city in cities:
             var = ctk.BooleanVar(value=False)
             self.city_vars[city] = var
             cb = ctk.CTkCheckBox(
-                frame,
+                self._city_container,
                 text=city.capitalize(),
                 variable=var,
                 font=ctk.CTkFont(size=12),
-                checkbox_width=18,
-                checkbox_height=18,
-                corner_radius=4,
+                checkbox_width=20,
+                checkbox_height=20,
+                corner_radius=5,
                 fg_color=_ACCENT,
                 hover_color=_ACCENT_HOVER,
             )
-            cb.grid(row=1 + i // cols, column=i % cols, padx=14, pady=(2, 8), sticky="w")
+            self._city_cbs.append(cb)
+
+        self._city_cols = 0
+        self._city_container.bind("<Configure>", self._reflow_cities)
+
+    def _reflow_cities(self, event=None):
+        w = self._city_container.winfo_width()
+        if w <= 1:
+            return
+        cols = max(2, w // 160)
+        if cols == self._city_cols:
+            return
+        self._city_cols = cols
+        for cb in self._city_cbs:
+            cb.grid_forget()
+        for i, cb in enumerate(self._city_cbs):
+            cb.grid(row=i // cols, column=i % cols, padx=8, pady=3, sticky="w")
+        for c in range(cols):
+            self._city_container.grid_columnconfigure(c, weight=1)
 
     def _build_date_section(self, parent):
         frame = ctk.CTkFrame(parent, fg_color=_BG_CARD, corner_radius=10)
-        frame.grid(row=2, column=0, padx=8, pady=4, sticky="ew")
+        frame.grid(row=2, column=0, padx=8, pady=6, sticky="ew")
 
         ctk.CTkLabel(frame, text="Date Range", font=ctk.CTkFont(size=13, weight="bold"), text_color=_ACCENT).grid(
             row=0, column=0, columnspan=5, padx=14, pady=(12, 6), sticky="w"
@@ -227,10 +249,13 @@ class TechnoScanApp(ctk.CTk):
             frame,
             width=13,
             date_pattern="yyyy-mm-dd",
-            background="#1f538d",
-            foreground="white",
-            selectbackground="#1f538d",
-            borderwidth=1,
+            background=_BG_INPUT,
+            foreground=_TEXT,
+            fieldbackground=_BG_INPUT,
+            fieldforeground=_TEXT,
+            selectbackground=_ACCENT,
+            selectforeground="white",
+            borderwidth=0,
             font=("Segoe UI", 11),
         )
         self.start_date.grid(row=1, column=1, padx=4, pady=8, sticky="w")
@@ -261,8 +286,8 @@ class TechnoScanApp(ctk.CTk):
             ctk.CTkButton(
                 preset_frame,
                 text=label,
-                width=90,
-                height=26,
+                width=95,
+                height=30,
                 font=ctk.CTkFont(size=11),
                 corner_radius=6,
                 fg_color=_BG_BTN,
@@ -278,7 +303,7 @@ class TechnoScanApp(ctk.CTk):
         self.run_btn = ctk.CTkButton(
             frame,
             text="Run Scan",
-            height=44,
+            height=48,
             font=ctk.CTkFont(size=15, weight="bold"),
             corner_radius=10,
             fg_color=_ACCENT,
@@ -290,7 +315,7 @@ class TechnoScanApp(ctk.CTk):
         self.cancel_btn = ctk.CTkButton(
             frame,
             text="Cancel",
-            height=44,
+            height=48,
             width=100,
             font=ctk.CTkFont(size=13, weight="bold"),
             corner_radius=10,
@@ -319,7 +344,7 @@ class TechnoScanApp(ctk.CTk):
         self.time_label.grid(row=0, column=1, sticky="e")
 
         self.progress_bar = ctk.CTkProgressBar(
-            frame, height=8, corner_radius=4, fg_color=_BG_INPUT, progress_color=_ACCENT
+            frame, height=10, corner_radius=5, fg_color=_BG_INPUT, progress_color=_ACCENT
         )
         self.progress_bar.grid(row=1, column=0, padx=14, pady=(0, 4), sticky="ew")
         self.progress_bar.set(0)
@@ -416,19 +441,31 @@ class TechnoScanApp(ctk.CTk):
         # Hide "no results" placeholder
         self.no_results_label.grid_forget()
 
-        card = ctk.CTkFrame(self.results_scroll, fg_color=_BG_CARD, corner_radius=10)
-        card.grid(row=idx, column=0, padx=4, pady=4, sticky="ew")
+        error = result.get("error")
+        border_color = _RED if error else _ACCENT
+
+        card = ctk.CTkFrame(
+            self.results_scroll,
+            fg_color=_BG_CARD,
+            corner_radius=10,
+            border_width=1,
+            border_color=border_color,
+        )
+        card.grid(row=idx, column=0, padx=4, pady=5, sticky="ew")
         card.grid_columnconfigure(1, weight=1)
 
-        # City name
+        # Status dot + city name
+        dot_color = _RED if error else _GREEN
+        ctk.CTkLabel(card, text="●", font=ctk.CTkFont(size=10), text_color=dot_color, width=16).grid(
+            row=0, column=0, padx=(12, 0), pady=(12, 10), sticky="w"
+        )
         ctk.CTkLabel(
             card, text=result.get("city", "?"), font=ctk.CTkFont(size=14, weight="bold"), text_color=_TEXT
-        ).grid(row=0, column=0, padx=(14, 8), pady=(12, 4), sticky="w")
+        ).grid(row=0, column=0, padx=(28, 8), pady=(12, 10), sticky="w")
 
         # Stats
         events = result.get("events", 0)
         followed = result.get("followed", 0)
-        error = result.get("error")
 
         if error:
             stat_text = f"Error: {error}"
@@ -441,7 +478,7 @@ class TechnoScanApp(ctk.CTk):
             stat_color = _TEXT_DIM
 
         ctk.CTkLabel(card, text=stat_text, font=ctk.CTkFont(size=12), text_color=stat_color).grid(
-            row=0, column=1, padx=4, pady=(12, 4), sticky="w"
+            row=0, column=1, padx=4, pady=(12, 10), sticky="w"
         )
 
         # Open Report button
@@ -451,13 +488,13 @@ class TechnoScanApp(ctk.CTk):
                 card,
                 text="Open Report",
                 width=110,
-                height=30,
+                height=32,
                 font=ctk.CTkFont(size=11, weight="bold"),
-                corner_radius=6,
+                corner_radius=8,
                 fg_color=_ACCENT,
                 hover_color=_ACCENT_HOVER,
                 command=lambda p=file_path: os.startfile(p),
-            ).grid(row=0, column=2, padx=(4, 14), pady=(12, 4))
+            ).grid(row=0, column=2, padx=(4, 14), pady=(12, 10))
 
     def _open_all_reports(self):
         for result in self._city_results:
@@ -514,14 +551,14 @@ class TechnoScanApp(ctk.CTk):
 
         genres = cfg.get("genres", {}).get("filter", ["Techno", "Drum & Bass", "Drum n Bass"])
         self.genre_entry = ctk.CTkEntry(
-            genre_frame, height=34, corner_radius=8, fg_color=_BG_INPUT, border_color=_BG_INPUT
+            genre_frame, height=36, corner_radius=8, fg_color=_BG_INPUT, border_color=_BG_INPUT
         )
         self.genre_entry.grid(row=2, column=0, padx=14, pady=(0, 12), sticky="ew")
         self.genre_entry.insert(0, ", ".join(genres))
 
         # --- Scoring weights ---
         scoring_frame = ctk.CTkFrame(tab, fg_color=_BG_CARD, corner_radius=10)
-        scoring_frame.grid(row=1, column=0, padx=8, pady=4, sticky="ew")
+        scoring_frame.grid(row=1, column=0, padx=8, pady=6, sticky="ew")
 
         ctk.CTkLabel(
             scoring_frame, text="Scoring Weights", font=ctk.CTkFont(size=13, weight="bold"), text_color=_ACCENT
@@ -545,17 +582,17 @@ class TechnoScanApp(ctk.CTk):
             ctk.CTkEntry(
                 scoring_frame,
                 textvariable=var,
-                width=100,
-                height=30,
+                width=120,
+                height=32,
                 corner_radius=6,
                 fg_color=_BG_INPUT,
                 border_color=_BG_INPUT,
                 justify="center",
-            ).grid(row=1 + i // 3, column=(i % 3) * 2 + 1, padx=(0, 14), pady=4, sticky="w")
+            ).grid(row=1 + i // 3, column=(i % 3) * 2 + 1, padx=(0, 14), pady=6, sticky="w")
 
         # --- Cache & threshold settings ---
         cache_frame = ctk.CTkFrame(tab, fg_color=_BG_CARD, corner_radius=10)
-        cache_frame.grid(row=2, column=0, padx=8, pady=4, sticky="ew")
+        cache_frame.grid(row=2, column=0, padx=8, pady=6, sticky="ew")
 
         ctk.CTkLabel(
             cache_frame, text="Cache & Thresholds", font=ctk.CTkFont(size=13, weight="bold"), text_color=_ACCENT
@@ -580,13 +617,13 @@ class TechnoScanApp(ctk.CTk):
             ctk.CTkEntry(
                 cache_frame,
                 textvariable=var,
-                width=80,
-                height=30,
+                width=100,
+                height=32,
                 corner_radius=6,
                 fg_color=_BG_INPUT,
                 border_color=_BG_INPUT,
                 justify="center",
-            ).grid(row=1 + i // 3, column=(i % 3) * 2 + 1, padx=(0, 14), pady=4, sticky="w")
+            ).grid(row=1 + i // 3, column=(i % 3) * 2 + 1, padx=(0, 14), pady=6, sticky="w")
 
         # Padding row for spacing
         pad = ctk.CTkFrame(cache_frame, fg_color="transparent", height=8)
@@ -762,8 +799,8 @@ class TechnoScanApp(ctk.CTk):
             try:
                 self._log(f"Fetching following list for {url} ...")
                 slugs = fetch_following_slugs(url)
-                update_following_py(slugs)
-                msg = f"Synced {len(slugs)} artists to following.py"
+                update_following(slugs)
+                msg = f"Synced {len(slugs)} artists to following.txt"
                 self.after(0, lambda: self.sync_status.configure(text=msg, text_color=_GREEN))
                 self.after(0, lambda: self._log(f"Done: {msg}"))
             except Exception as e:
@@ -839,7 +876,7 @@ class TechnoScanApp(ctk.CTk):
                         break
                     city_name = CITIES[city][1]
                     self.after(0, lambda idx=i, t=total, cn=city_name: self._set_city_progress(idx, t, cn))
-                    result = run_for_city(city, start_date, days, progress_cb=self._handle_progress)
+                    result = run_for_city_sync(city, start_date, days, progress_cb=self._handle_progress)
                     if result:
                         self.after(0, lambda r=result: self._add_result_card(r))
 

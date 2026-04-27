@@ -4,7 +4,7 @@ import json
 
 import pandas as pd
 
-from techno_scan.scoring import filter_df
+from cuepoint.scoring import filter_df
 from tests.conftest import _make_event_row
 
 

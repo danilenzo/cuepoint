@@ -1,7 +1,7 @@
 """Tests for following.py — is_following checks."""
 
-from techno_scan import following
-from techno_scan.following import _build_expanded, is_following
+from cuepoint import following
+from cuepoint.following import _build_expanded, is_following
 
 
 def _patch_following(monkeypatch, slugs):

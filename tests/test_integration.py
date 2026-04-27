@@ -4,8 +4,8 @@ import json
 
 import pandas as pd
 
-from techno_scan.html_creator import create_html
-from techno_scan.scoring import filter_df, sort_df
+from cuepoint.html_creator import create_html
+from cuepoint.scoring import filter_df, sort_df
 from tests.conftest import _make_event_row
 
 

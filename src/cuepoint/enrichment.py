@@ -1,14 +1,14 @@
 """
 Artist enrichment pipeline: URL resolution, SC/Discogs/Bandcamp enrichment, caching.
 
-Extracted from event_fetcher.py for maintainability.
+Uses asyncio.gather + Semaphore for concurrent enrichment within each phase.
 """
 
 from __future__ import annotations
 
-import threading
+import asyncio
+import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
 
@@ -20,7 +20,7 @@ from .bandcamp import populate_bandcamp_info
 from .discogs import populate_discogs_info
 from .discovery import check_rising
 from .following import is_following
-from .sc import populate_sc_info, search_sc_by_name
+from .sc import is_oauth, populate_sc_info, reset_circuit_breaker, search_sc_by_name
 
 # ---------------------------------------------------------------------------
 # Cache helpers
@@ -67,20 +67,14 @@ def cleanup_cache() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _run_enrichment_phases(
+async def _run_enrichment_phases(
     to_enrich: list[tuple[str, dict[str, Any]]],
     progress_cb: Callable[[str, str, float], None] | None = None,
     label: str = "",
 ) -> dict[str, dict[str, Any]]:
     """Run the SC → Discogs → Bandcamp → rising → save pipeline on a list of (aid, info) pairs.
 
-    Args:
-        to_enrich: list of (artist_id, info_dict) to enrich.
-        progress_cb: optional callback(phase, detail, fraction) where fraction is 0.0–1.0.
-        label: prefix for log messages (e.g. "" or "club ").
-
-    Returns:
-        dict mapping artist_id → enriched info.
+    Uses asyncio.Semaphore for concurrency control within each phase (replaces ThreadPoolExecutor).
     """
 
     def _cb(phase: str, detail: str, frac: float) -> None:
@@ -88,75 +82,84 @@ def _run_enrichment_phases(
             progress_cb(phase, detail, frac)
 
     total = len(to_enrich)
+    t0 = time.monotonic()
 
-    # Phase: SoundCloud (3 workers)
-    logger.info(f"  SC enrichment for {total} {label}artists (3 workers)...")
+    # Phase: SoundCloud
+    reset_circuit_breaker()
+    sc_concurrency = 3 if is_oauth() else 1
+    sc_sem = asyncio.Semaphore(sc_concurrency)
+    logger.info(f"  SC enrichment for {total} {label}artists ({sc_concurrency} concurrent)...")
     _cb("enrich_sc", f"SoundCloud: 0/{total}", 0.0)
-    _sc_lock = threading.Lock()
-    _sc_done = [0]
+    sc_done = 0
 
-    def _sc(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+    async def _sc(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+        nonlocal sc_done
         aid, info = item
-        try:
-            info = populate_sc_info(info)
-        except Exception as e:
-            logger.warning(f"SC failed for '{info.get('name')}': {e}")
-        with _sc_lock:
-            _sc_done[0] += 1
-            done = _sc_done[0]
-        _cb("enrich_sc", f"SoundCloud: {done}/{total}", done / total * 0.25)
+        async with sc_sem:
+            try:
+                info = await populate_sc_info(info)
+            except Exception as e:
+                logger.warning(f"SC failed for '{info.get('name')}': {e}")
+        sc_done += 1
+        _cb("enrich_sc", f"SoundCloud: {sc_done}/{total}", sc_done / total * 0.25)
         return aid, info
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        to_enrich = list(pool.map(_sc, to_enrich))
+    to_enrich = list(await asyncio.gather(*[_sc(item) for item in to_enrich]))
+    t_sc = time.monotonic()
 
-    # Phase: Discogs (3 workers, rate limited)
+    # Phase: Discogs
     dc_total = len(to_enrich)
+    dc_sem = asyncio.Semaphore(3)
     logger.info(f"  Discogs enrichment for {dc_total} {label}artists (rate-limited)...")
     _cb("enrich_discogs", f"Discogs: 0/{dc_total}", 0.25)
-    _dc_lock = threading.Lock()
-    _dc_done = [0]
+    dc_done = 0
 
-    def _dc(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+    async def _dc(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+        nonlocal dc_done
         aid, info = item
-        try:
-            info = populate_discogs_info(info)
-        except Exception as e:
-            logger.warning(f"Discogs failed for '{info.get('name')}': {e}")
-        with _dc_lock:
-            _dc_done[0] += 1
-            done = _dc_done[0]
-        if done % 10 == 0 or done == dc_total:
-            logger.info(f"  Discogs {label}progress: {done}/{dc_total}")
-        _cb("enrich_discogs", f"Discogs: {done}/{dc_total}", 0.25 + done / dc_total * 0.4)
+        async with dc_sem:
+            try:
+                info = await populate_discogs_info(info)
+            except Exception as e:
+                logger.warning(f"Discogs failed for '{info.get('name')}': {e}")
+        dc_done += 1
+        if dc_done % 10 == 0 or dc_done == dc_total:
+            logger.info(f"  Discogs {label}progress: {dc_done}/{dc_total}")
+        _cb("enrich_discogs", f"Discogs: {dc_done}/{dc_total}", 0.25 + dc_done / dc_total * 0.4)
         return aid, info
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        to_enrich = list(pool.map(_dc, to_enrich))
+    to_enrich = list(await asyncio.gather(*[_dc(item) for item in to_enrich]))
+    t_dc = time.monotonic()
 
-    # Phase: Bandcamp (5 workers)
+    # Phase: Bandcamp
     bc_total = len(to_enrich)
-    logger.info(f"  Bandcamp enrichment for {bc_total} {label}artists (5 workers)...")
+    bc_sem = asyncio.Semaphore(5)
+    logger.info(f"  Bandcamp enrichment for {bc_total} {label}artists (5 concurrent)...")
     _cb("enrich_bandcamp", f"Bandcamp: 0/{bc_total}", 0.65)
-    _bc_lock = threading.Lock()
-    _bc_done = [0]
+    bc_done = 0
 
-    def _bc(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+    async def _bc(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+        nonlocal bc_done
         aid, info = item
-        try:
-            info = populate_bandcamp_info(info)
-        except Exception as e:
-            logger.warning(f"Bandcamp failed for '{info.get('name')}': {e}")
-        with _bc_lock:
-            _bc_done[0] += 1
-            done = _bc_done[0]
-        if done % 10 == 0 or done == bc_total:
-            logger.info(f"  Bandcamp {label}progress: {done}/{bc_total}")
-        _cb("enrich_bandcamp", f"Bandcamp: {done}/{bc_total}", 0.65 + done / bc_total * 0.30)
+        async with bc_sem:
+            try:
+                info = await populate_bandcamp_info(info)
+            except Exception as e:
+                logger.warning(f"Bandcamp failed for '{info.get('name')}': {e}")
+        bc_done += 1
+        if bc_done % 10 == 0 or bc_done == bc_total:
+            logger.info(f"  Bandcamp {label}progress: {bc_done}/{bc_total}")
+        _cb("enrich_bandcamp", f"Bandcamp: {bc_done}/{bc_total}", 0.65 + bc_done / bc_total * 0.30)
         return aid, info
 
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        to_enrich = list(pool.map(_bc, to_enrich))
+    to_enrich = list(await asyncio.gather(*[_bc(item) for item in to_enrich]))
+    t_bc = time.monotonic()
+
+    logger.info(
+        f"  Enrichment timing for {total} {label}artists: "
+        f"SC={t_sc - t0:.0f}s, Discogs={t_dc - t_sc:.0f}s, "
+        f"Bandcamp={t_bc - t_dc:.0f}s, total={t_bc - t0:.0f}s"
+    )
 
     # Phase: rising check + batch cache save
     _cb("saving", "Saving to cache...", 0.95)
@@ -179,8 +182,8 @@ def _run_enrichment_phases(
 # ---------------------------------------------------------------------------
 
 
-def get_artist_info_by_ra_id(
-    artist_id: str | int, get_artist_urls_fn: Callable[[str | int], dict[str, Any] | None]
+async def get_artist_info_by_ra_id(
+    artist_id: str | int, get_artist_urls_fn: Callable[[str | int], Any]
 ) -> dict[str, Any] | None:
     """Single-artist enrichment (used by stale refresh and club fallback)."""
     cached = get_cached_artist(artist_id)
@@ -188,23 +191,23 @@ def get_artist_info_by_ra_id(
         logger.info(f"Cache hit for artist {artist_id}")
         return cached
 
-    artist_info = get_artist_urls_fn(artist_id)
+    artist_info: dict[str, Any] | None = await get_artist_urls_fn(artist_id)
     if artist_info is None:
         logger.warning(f"RA returned no data for artist {artist_id}, skipping enrichment")
         return None
 
     try:
-        artist_info = populate_sc_info(artist_info)
+        artist_info = await populate_sc_info(artist_info)
     except Exception as e:
         logger.warning(f"SC failed for '{artist_info.get('name')}': {e}")
 
     try:
-        artist_info = populate_discogs_info(artist_info)
+        artist_info = await populate_discogs_info(artist_info)
     except Exception as e:
         logger.warning(f"Discogs failed for '{artist_info.get('name')}': {e}")
 
     try:
-        artist_info = populate_bandcamp_info(artist_info)
+        artist_info = await populate_bandcamp_info(artist_info)
     except Exception as e:
         logger.warning(f"Bandcamp failed for '{artist_info.get('name')}': {e}")
 
@@ -218,54 +221,64 @@ def get_artist_info_by_ra_id(
 # ---------------------------------------------------------------------------
 
 
-def enrich_batch_phased(
+async def enrich_batch_phased(
     artist_ids: list[str | int],
-    get_artist_urls_fn: Callable[[str | int], dict[str, Any] | None],
+    get_artist_urls_fn: Callable[[str | int], Any],
     progress_cb: Callable[[dict[str, Any]], None] | None = None,
     pct_base: float = 0.1,
     pct_range: float = 0.6,
 ) -> dict[str | int, dict[str, Any]]:
-    """Enrich a batch of artist IDs using source-specific thread pools.
+    """Enrich a batch of artist IDs using async concurrency.
 
-    Phase 1: URL resolution + cache check (parallel)
+    Phase 1: URL resolution + cache check (concurrent)
     Phase 2-4: SC → Discogs → Bandcamp (shared pipeline)
     Phase 5: Rising check + cache save
-
-    progress_cb: optional callback({"phase", "detail", "pct"})
-    pct_base/pct_range: progress percentage range this batch occupies
     """
+    t_resolve_start = time.monotonic()
+    resolve_sem = asyncio.Semaphore(cfg.max_workers())
 
-    # Phase 1: resolve URLs, filter out cache hits
-    def _resolve(aid: str | int) -> tuple[str | int, dict[str, Any] | None, bool]:
+    async def _resolve(aid: str | int) -> tuple[str | int, dict[str, Any] | None, bool]:
         cached = get_cached_artist(aid)
         if cached is not None:
-            logger.info(f"Cache hit for artist {aid}")
             return aid, cached, True
-        info = get_artist_urls_fn(aid)
+        async with resolve_sem:
+            info = await get_artist_urls_fn(aid)
         return aid, info, False
 
-    with ThreadPoolExecutor(max_workers=cfg.max_workers()) as pool:
-        resolved = list(pool.map(_resolve, artist_ids))
+    resolved = await asyncio.gather(*[_resolve(aid) for aid in artist_ids])
+
+    logger.info(
+        f"URL resolution + cache check: {time.monotonic() - t_resolve_start:.0f}s for {len(artist_ids)} artists"
+    )
 
     results: dict[str | int, dict[str, Any]] = {}
     to_enrich: list[tuple[str, dict[str, Any]]] = []
+    cache_hits = 0
+    ra_misses = 0
     for aid, info, was_cached in resolved:
         if was_cached and info is not None:
             results[aid] = info
+            cache_hits += 1
         elif info is None:
             logger.warning(f"RA returned no data for artist {aid}, skipping")
+            ra_misses += 1
         else:
             to_enrich.append((str(aid), info))
+
+    logger.info(
+        f"Enrichment breakdown: {cache_hits} cache hits, "
+        f"{len(to_enrich)} to enrich, {ra_misses} RA misses "
+        f"(total {len(artist_ids)})"
+    )
 
     if not to_enrich:
         return results
 
-    # Adapter: translate (phase, detail, frac) → {"phase", "detail", "pct"}
     def _wrapped_cb(phase: str, detail: str, frac: float) -> None:
         if progress_cb:
             progress_cb({"phase": phase, "detail": detail, "pct": pct_base + frac * pct_range})
 
-    enriched = _run_enrichment_phases(to_enrich, progress_cb=_wrapped_cb)
+    enriched = await _run_enrichment_phases(to_enrich, progress_cb=_wrapped_cb)
     results.update(enriched)
     return results
 
@@ -275,7 +288,7 @@ def enrich_batch_phased(
 # ---------------------------------------------------------------------------
 
 
-def get_club_artist_info(
+async def get_club_artist_info(
     artist: dict[str, Any], get_artist_urls_fn: Callable[..., Any] | None = None
 ) -> dict[str, Any]:
     """Single club artist enrichment (fallback for individual calls)."""
@@ -286,20 +299,20 @@ def get_club_artist_info(
     enriched = dict(artist)
 
     if not enriched.get("soundcloud"):
-        sc_url = search_sc_by_name(artist["name"])
+        sc_url = await search_sc_by_name(artist["name"])
         if sc_url:
             enriched["soundcloud"] = sc_url
 
     try:
-        enriched = populate_sc_info(enriched)
+        enriched = await populate_sc_info(enriched)
     except Exception as e:
         logger.warning(f"SC populate failed for '{artist['name']}': {e}")
     try:
-        enriched = populate_discogs_info(enriched)
+        enriched = await populate_discogs_info(enriched)
     except Exception as e:
         logger.warning(f"Discogs failed for club artist '{artist['name']}': {e}")
     try:
-        enriched = populate_bandcamp_info(enriched)
+        enriched = await populate_bandcamp_info(enriched)
     except Exception as e:
         logger.warning(f"Bandcamp failed for club artist '{artist['name']}': {e}")
 
@@ -308,9 +321,8 @@ def get_club_artist_info(
     return enriched
 
 
-def enrich_club_batch_phased(stubs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+async def enrich_club_batch_phased(stubs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """Phased enrichment for club artist stubs (SC name search + 3-source pipeline)."""
-    # Phase 0: cache check
     results: dict[str, dict[str, Any]] = {}
     to_enrich: list[tuple[str, dict[str, Any]]] = []
     for stub in stubs:
@@ -323,20 +335,22 @@ def enrich_club_batch_phased(stubs: list[dict[str, Any]]) -> dict[str, dict[str,
     if not to_enrich:
         return results
 
-    # Phase 1: SC name search for stubs missing SC URL (3 workers)
-    def _sc_resolve(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+    # Phase 1: SC name search for stubs missing SC URL
+    sc_resolve_sem = asyncio.Semaphore(3)
+
+    async def _sc_resolve(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
         aid, info = item
         if not info.get("soundcloud"):
-            sc_url = search_sc_by_name(info["name"])
+            async with sc_resolve_sem:
+                sc_url = await search_sc_by_name(info["name"])
             if sc_url:
                 info["soundcloud"] = sc_url
         return aid, info
 
-    logger.info(f"  SC name search for {len(to_enrich)} club artists (3 workers)...")
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        to_enrich = list(pool.map(_sc_resolve, to_enrich))
+    logger.info(f"  SC name search for {len(to_enrich)} club artists (3 concurrent)...")
+    to_enrich = list(await asyncio.gather(*[_sc_resolve(item) for item in to_enrich]))
 
     # Phases 2-5: shared SC → Discogs → Bandcamp → rising → save pipeline
-    enriched = _run_enrichment_phases(to_enrich, label="club ")
+    enriched = await _run_enrichment_phases(to_enrich, label="club ")
     results.update(enriched)
     return results

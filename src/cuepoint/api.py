@@ -1,8 +1,8 @@
 """
-FastAPI layer for techno_scan.
+FastAPI layer for cuepoint.
 
 Exposes the scan pipeline as a REST API:
-    POST /scan           — start a scan for one or more cities (runs in background)
+    POST /scan           — start a scan for one or more cities (runs as background task)
     GET  /status         — list all scans and their status
     GET  /status/{id}    — get status of a specific scan
     GET  /results/{city} — latest scan results for a city as JSON
@@ -11,16 +11,17 @@ Exposes the scan pipeline as a REST API:
     GET  /cities         — list available city keys
 
 Run with:
-    uvicorn techno_scan.api:app --reload --port 8000
+    uvicorn cuepoint.api:app --reload --port 8000
 """
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
-import threading
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
 
@@ -32,12 +33,20 @@ from pydantic import BaseModel, Field
 
 from . import db as store
 from .enrichment import cleanup_cache
-from .event_fetcher import CITIES
+from .event_fetcher import CITIES, close_clients
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
+    yield
+    await close_clients()
+
 
 app = FastAPI(
-    title="techno_scan",
+    title="cuepoint",
     description="Electronic music event scanner — fetches RA.co events, enriches artists via SoundCloud/Discogs/Bandcamp, filters and ranks by genre.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # ---------------------------------------------------------------------------
@@ -45,7 +54,8 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 
 _scans: dict[str, dict[str, Any]] = {}
-_scans_lock = threading.Lock()
+_scans_lock = asyncio.Lock()
+_background_tasks: set[asyncio.Task[None]] = set()
 
 # ---------------------------------------------------------------------------
 # Rate limiting (simple sliding window per IP)
@@ -54,13 +64,13 @@ _scans_lock = threading.Lock()
 _RATE_LIMIT_WINDOW = 60  # seconds
 _RATE_LIMIT_MAX = 5  # max POST /scan per window per IP
 _rate_log: dict[str, list[float]] = {}
-_rate_lock = threading.Lock()
+_rate_lock = asyncio.Lock()
 
 
-def _check_rate_limit(client_ip: str) -> bool:
+async def _check_rate_limit(client_ip: str) -> bool:
     """Return True if the request is allowed."""
     now = time.monotonic()
-    with _rate_lock:
+    async with _rate_lock:
         timestamps = _rate_log.get(client_ip, [])
         timestamps = [t for t in timestamps if now - t < _RATE_LIMIT_WINDOW]
         if len(timestamps) >= _RATE_LIMIT_MAX:
@@ -195,16 +205,16 @@ def _df_to_events(df: pd.DataFrame) -> list[dict[str, Any]]:
     return events
 
 
-def _update_scan(scan_id: str, **fields: Any) -> None:
-    """Thread-safe update of a scan record. No-op if scan_id was removed."""
-    with _scans_lock:
+async def _update_scan(scan_id: str, **fields: Any) -> None:
+    """Thread-safe update of a scan record."""
+    async with _scans_lock:
         if scan_id in _scans:
             _scans[scan_id].update(fields)
 
 
-def _run_scan_with_capture(scan_id: str, req: ScanRequest) -> None:
-    """Run scan pipeline in a background thread, capturing JSON results."""
-    _update_scan(scan_id, status="running", started_at=datetime.now().isoformat())
+async def _run_scan(scan_id: str, req: ScanRequest) -> None:
+    """Run scan pipeline as an async background task."""
+    await _update_scan(scan_id, status="running", started_at=datetime.now().isoformat())
 
     try:
         store.migrate_if_needed()
@@ -237,7 +247,7 @@ def _run_scan_with_capture(scan_id: str, req: ScanRequest) -> None:
             stats.start()
 
             try:
-                df = get_data(ctx)
+                df = await get_data(ctx)
                 stats.ra_events_fetched = len(df)
 
                 if not df.empty:
@@ -247,11 +257,9 @@ def _run_scan_with_capture(scan_id: str, req: ScanRequest) -> None:
                     sorted_df["city_name"] = city_name
                     stats.events_after_filter = len(sorted_df)
 
-                    # Capture JSON for API results and persist to SQLite
                     events_json = _df_to_events(sorted_df)
                     store.save_api_results(city_name.lower(), events_json)
 
-                    # Also generate the HTML report
                     stats.finish()
                     html_res = create_html(sorted_df, stats_html=stats.to_html_footer())
                     file_path = (
@@ -288,11 +296,11 @@ def _run_scan_with_capture(scan_id: str, req: ScanRequest) -> None:
                     }
                 )
 
-        _update_scan(scan_id, status="completed", finished_at=datetime.now().isoformat(), results=raw_results)
+        await _update_scan(scan_id, status="completed", finished_at=datetime.now().isoformat(), results=raw_results)
 
     except Exception as e:
         logger.error(f"Scan {scan_id} failed: {e}")
-        _update_scan(scan_id, status="failed", finished_at=datetime.now().isoformat(), error=str(e))
+        await _update_scan(scan_id, status="failed", finished_at=datetime.now().isoformat(), error=str(e))
 
 
 def _resolve_city(city: str) -> tuple[str, str] | None:
@@ -310,10 +318,10 @@ def _resolve_city(city: str) -> tuple[str, str] | None:
 
 
 @app.get("/")
-def root() -> dict[str, Any]:
+async def root() -> dict[str, Any]:
     available_cities = list(CITIES.keys())
     return {
-        "name": "techno_scan API",
+        "name": "cuepoint API",
         "version": "1.0.0",
         "endpoints": {
             "POST /scan": "Start a scan for one or more cities",
@@ -329,7 +337,7 @@ def root() -> dict[str, Any]:
 
 
 @app.get("/health", response_model=HealthResponse)
-def health_check() -> HealthResponse:
+async def health_check() -> HealthResponse:
     db_ok = False
     try:
         store._get_conn().execute("SELECT 1").fetchone()
@@ -345,14 +353,14 @@ def health_check() -> HealthResponse:
 
 
 @app.get("/cities")
-def list_cities() -> dict[str, list[str]]:
+async def list_cities() -> dict[str, list[str]]:
     return {"cities": list(CITIES.keys())}
 
 
 @app.post("/scan", response_model=ScanResponse)
-def start_scan(req: ScanRequest, request: Request) -> ScanResponse:
+async def start_scan(req: ScanRequest, request: Request) -> ScanResponse:
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(client_ip):
+    if not await _check_rate_limit(client_ip):
         raise HTTPException(
             status_code=429,
             detail=f"Rate limit exceeded. Max {_RATE_LIMIT_MAX} scans per {_RATE_LIMIT_WINDOW}s.",
@@ -366,7 +374,7 @@ def start_scan(req: ScanRequest, request: Request) -> ScanResponse:
         )
 
     scan_id = uuid.uuid4().hex[:12]
-    with _scans_lock:
+    async with _scans_lock:
         _scans[scan_id] = {
             "scan_id": scan_id,
             "status": "pending",
@@ -377,8 +385,8 @@ def start_scan(req: ScanRequest, request: Request) -> ScanResponse:
             "error": None,
         }
 
-    thread = threading.Thread(target=_run_scan_with_capture, args=(scan_id, req), daemon=True)
-    thread.start()
+    _background_tasks.add(task := asyncio.create_task(_run_scan(scan_id, req)))
+    task.add_done_callback(_background_tasks.discard)
 
     return ScanResponse(
         scan_id=scan_id,
@@ -389,14 +397,14 @@ def start_scan(req: ScanRequest, request: Request) -> ScanResponse:
 
 
 @app.get("/status", response_model=list[ScanStatusResponse])
-def list_scans() -> list[dict[str, Any]]:
-    with _scans_lock:
+async def list_scans() -> list[dict[str, Any]]:
+    async with _scans_lock:
         return list(_scans.values())
 
 
 @app.get("/status/{scan_id}", response_model=ScanStatusResponse)
-def get_scan_status(scan_id: str) -> dict[str, Any]:
-    with _scans_lock:
+async def get_scan_status(scan_id: str) -> dict[str, Any]:
+    async with _scans_lock:
         scan = _scans.get(scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
@@ -404,7 +412,7 @@ def get_scan_status(scan_id: str) -> dict[str, Any]:
 
 
 @app.get("/results/{city}", response_model=CityResultsResponse)
-def get_results(
+async def get_results(
     city: str,
     page: int = Query(default=1, ge=1, description="Page number"),
     page_size: int = Query(default=50, ge=1, le=200, description="Events per page"),
@@ -440,7 +448,7 @@ def get_results(
 
 
 @app.get("/results/{city}/export")
-def export_results(city: str) -> StreamingResponse:
+async def export_results(city: str) -> StreamingResponse:
     resolved = _resolve_city(city)
     if resolved is None:
         raise HTTPException(

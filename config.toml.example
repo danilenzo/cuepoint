@@ -110,6 +110,7 @@ slug = "pt/lisbon"
 [discovery]
 rising_sc_pct = 20
 rising_dc_pct = 30
+similarity_threshold = 0.5
 
 [discogs]
 max_masters = 15

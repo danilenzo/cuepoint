@@ -80,7 +80,7 @@ def compute_similarity(artist_lookup: dict[str | int, dict[str, Any]]) -> None:
             if score > best_score:
                 best_score = score
                 best_name = fname
-        if best_score >= 0.3 and best_name:
+        if best_score >= cfg.similarity_threshold() and best_name:
             artist_lookup[aid]["_similar_to"] = best_name
             artist_lookup[aid]["_similarity_score"] = round(best_score * 100)
 

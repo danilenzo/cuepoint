@@ -2,7 +2,7 @@
 
 import json
 
-from techno_scan.discovery import _artist_tags
+from cuepoint.discovery import _artist_tags
 
 
 def test_all_sources():

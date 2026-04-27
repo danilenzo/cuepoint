@@ -3,7 +3,7 @@
 import json
 from datetime import datetime, timedelta
 
-from techno_scan import db as store
+from cuepoint import db as store
 
 
 def test_save_and_get_url(tmp_db):

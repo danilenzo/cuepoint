@@ -239,7 +239,7 @@ def df_to_flyer(row: Any) -> str:
     if not pic or (isinstance(pic, float) and pic != pic):
         return ""
 
-    return f"""<img src="{pic}" alt="Image" style="width:200px; height:auto;">"""
+    return f"""<img src="{pic}" alt="Image" style="width:100%; height:auto;">"""
 
 
 def df_to_attenders(row: Any) -> int:
@@ -259,13 +259,13 @@ def df_to_strength(row: Any) -> str:
 
 
 _CURRENCY_SYMBOLS = {
-    "GBP": "&#163;",  # £
-    "EUR": "&#8364;",  # €
-    "USD": "&#36;",  # $
-    "GEL": "&#8382;",  # ₾
-    "JPY": "&#165;",  # ¥
-    "ARS": "AR&#36;",  # AR$
-    "PLN": "z&#322;",  # zł
+    "GBP": "£",
+    "EUR": "€",
+    "USD": "$",
+    "GEL": "₾",
+    "JPY": "¥",
+    "ARS": "AR$",
+    "PLN": "zł",
 }
 
 _CITY_CURRENCY = {
@@ -570,27 +570,37 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>techno_scan</title>
+<title>cuepoint</title>
 <style>
     :root {
-        --bg-primary: #0f1114;
-        --bg-secondary: #161920;
-        --bg-card: #1a1e27;
-        --bg-elevated: #1f2430;
-        --bg-hover: #252a36;
+        --bg-primary: #0c0e12;
+        --bg-secondary: #13161c;
+        --bg-card: #181c24;
+        --bg-elevated: #1e2330;
+        --bg-hover: #252b38;
         --border: rgba(255,255,255,0.06);
         --border-hover: rgba(255,255,255,0.12);
-        --text-primary: #e2e4e9;
-        --text-secondary: #9399a6;
-        --text-muted: #5c6370;
+        --text-primary: #e4e6eb;
+        --text-secondary: #8b92a0;
+        --text-muted: #555d6e;
         --accent: #4a9eff;
-        --accent-dim: rgba(74,158,255,0.15);
+        --accent-dim: rgba(74,158,255,0.12);
+        --accent-glow: rgba(74,158,255,0.25);
         --green: #7ec87e;
-        --green-dim: rgba(126,200,126,0.12);
+        --green-dim: rgba(126,200,126,0.10);
         --red: #e06c75;
+        --red-dim: rgba(224,108,117,0.12);
         --purple: #c678dd;
-        --radius: 10px;
-        --radius-sm: 6px;
+        --orange: #d19a66;
+        --cyan: #56b6c2;
+        --radius: 12px;
+        --radius-sm: 8px;
+        --radius-xs: 4px;
+        --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+        --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,0.45);
+        --transition-fast: 150ms ease;
+        --transition-base: 200ms ease;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -601,21 +611,43 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
         padding-right: env(safe-area-inset-right);
         padding-bottom: env(safe-area-inset-bottom);
         -webkit-text-size-adjust: 100%;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+    :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
     }
     /* --- toolbar --- */
     .toolbar {
         position: sticky; top: 0; z-index: 10;
-        background: rgba(15,17,20,0.82);
-        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+        background: rgba(12,14,18,0.85);
+        backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
         border-bottom: 1px solid var(--border);
-        padding: 14px 24px;
-        display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+        padding: 12px clamp(8px, 2vw, 24px);
+        display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
     }
+    .toolbar-brand {
+        font-size: 15px; font-weight: 700; letter-spacing: -0.3px;
+        color: var(--text-primary); margin-right: 8px; white-space: nowrap;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .toolbar-brand .brand-icon {
+        width: 22px; height: 22px; border-radius: 6px;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+    }
+    .toolbar-brand .brand-icon svg { width: 13px; height: 13px; color: #fff; }
+    .toolbar-sep { width: 1px; height: 24px; background: var(--border-hover); flex-shrink: 0; }
     .toolbar input[type="text"] {
         background: var(--bg-elevated); color: var(--text-primary);
-        border: 1px solid var(--border-hover);
-        border-radius: var(--radius); padding: 9px 14px; font-size: 13px;
-        width: 260px; transition: border-color 0.2s, box-shadow 0.2s;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm); padding: 8px 12px 8px 34px; font-size: 13px;
+        width: 240px; transition: border-color var(--transition-base), box-shadow var(--transition-base);
         outline: none;
     }
     .toolbar input[type="text"]:focus {
@@ -623,9 +655,16 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
         box-shadow: 0 0 0 3px var(--accent-dim);
     }
     .toolbar input[type="text"]::placeholder { color: var(--text-muted); }
+    .search-wrap {
+        position: relative; display: flex; align-items: center;
+    }
+    .search-wrap svg {
+        position: absolute; left: 10px; width: 15px; height: 15px;
+        color: var(--text-muted); pointer-events: none;
+    }
     .toolbar label, .toolbar .tb-btn {
         font-size: 13px; cursor: pointer; user-select: none;
-        color: var(--text-secondary); transition: color 0.15s;
+        color: var(--text-secondary); transition: color var(--transition-fast);
         display: flex; align-items: center; gap: 6px;
     }
     .toolbar label:hover, .toolbar .tb-btn:hover { color: var(--text-primary); }
@@ -636,201 +675,322 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
         font-size: 12px; color: var(--text-muted);
         margin-left: auto; font-variant-numeric: tabular-nums;
     }
+    .tb-action {
+        background: var(--bg-elevated); color: var(--text-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm); padding: 8px 14px; font-size: 13px;
+        cursor: pointer; transition: all var(--transition-base);
+        display: inline-flex; align-items: center; gap: 6px;
+        font-family: inherit; white-space: nowrap;
+    }
+    .tb-action:hover {
+        background: var(--bg-hover); color: var(--text-primary);
+        border-color: var(--border-hover);
+    }
+    .tb-action:active { transform: scale(0.97); }
+    .tb-action.active {
+        background: var(--accent-dim); color: var(--accent);
+        border-color: rgba(74,158,255,0.3);
+    }
+    .tb-action svg { width: 14px; height: 14px; flex-shrink: 0; }
     .toolbar .ics-export, .toolbar .view-toggle {
         background: var(--bg-elevated); color: var(--text-secondary);
-        border: 1px solid var(--border-hover);
-        border-radius: var(--radius); padding: 9px 16px; font-size: 13px;
-        cursor: pointer; transition: all 0.2s;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm); padding: 8px 14px; font-size: 13px;
+        cursor: pointer; transition: all var(--transition-base);
+        display: inline-flex; align-items: center; gap: 6px;
+        font-family: inherit;
     }
     .toolbar .ics-export:hover, .toolbar .view-toggle:hover {
         background: var(--bg-hover); color: var(--text-primary);
-        border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim);
+        border-color: var(--border-hover);
     }
+    .toolbar .ics-export:active, .toolbar .view-toggle:active { transform: scale(0.97); }
     .toolbar .view-toggle.active {
         background: var(--accent-dim); color: var(--accent);
-        border-color: var(--accent);
+        border-color: rgba(74,158,255,0.3);
     }
     /* genre dropdown */
     .genre-dropdown { position: relative; }
     .genre-dropdown-btn {
         background: var(--bg-elevated); color: var(--text-secondary);
-        border: 1px solid var(--border-hover);
-        border-radius: var(--radius); padding: 9px 14px; font-size: 13px;
-        cursor: pointer; transition: all 0.2s; white-space: nowrap;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm); padding: 8px 14px; font-size: 13px;
+        cursor: pointer; transition: all var(--transition-base); white-space: nowrap;
+        font-family: inherit; display: inline-flex; align-items: center; gap: 6px;
     }
     .genre-dropdown-btn:hover {
         background: var(--bg-hover); color: var(--text-primary);
+        border-color: var(--border-hover);
     }
+    .genre-dropdown-btn:active { transform: scale(0.97); }
     .genre-panel {
-        position: absolute; top: 100%; left: 0; z-index: 20;
+        position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
         background: var(--bg-card); border: 1px solid var(--border-hover);
-        border-radius: var(--radius); padding: 8px; margin-top: 4px;
-        min-width: 200px; max-height: 300px; overflow-y: auto;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        border-radius: var(--radius); padding: 6px; margin-top: 0;
+        min-width: 220px; max-height: 340px; overflow-y: auto;
+        box-shadow: var(--shadow-lg);
     }
     .genre-panel label {
         display: flex; align-items: center; gap: 8px;
-        padding: 5px 8px; border-radius: var(--radius-sm);
-        font-size: 12px; cursor: pointer; transition: background 0.15s;
+        padding: 6px 10px; border-radius: var(--radius-xs);
+        font-size: 12px; cursor: pointer; transition: background var(--transition-fast);
     }
     .genre-panel label:hover { background: var(--bg-hover); }
     /* --- container --- */
-    .table-wrap { padding: 16px 24px 32px; }
+    .table-wrap { padding: 16px clamp(8px, 2vw, 24px) 32px; }
     /* --- table --- */
     table {
         border-collapse: separate; border-spacing: 0;
-        width: 100%; table-layout: auto;
+        width: 100%; table-layout: fixed;
     }
-    thead { position: sticky; top: 52px; z-index: 5; }
+    thead { position: sticky; top: var(--toolbar-h, 50px); z-index: 5; }
     th {
         background: var(--bg-secondary);
         color: var(--text-muted); border: none;
         border-bottom: 2px solid var(--border);
-        padding: 11px 14px; text-align: left; font-size: 11px;
-        text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;
+        padding: 10px 14px; text-align: left; font-size: 10px;
+        text-transform: uppercase; letter-spacing: 1px; font-weight: 600;
         cursor: pointer; user-select: none; white-space: nowrap;
-        transition: color 0.15s;
+        transition: color var(--transition-fast);
     }
-    th:first-child { border-radius: var(--radius) 0 0 0; }
-    th:last-child { border-radius: 0 var(--radius) 0 0; }
+    th:first-child { border-radius: var(--radius-sm) 0 0 0; }
+    th:last-child { border-radius: 0 var(--radius-sm) 0 0; }
     th:hover { color: var(--accent); }
     th .arrow { font-size: 10px; margin-left: 4px; color: var(--accent); }
     td {
         border: none; border-bottom: 1px solid var(--border);
         padding: 12px 14px; text-align: left; vertical-align: top;
         word-wrap: break-word; white-space: normal; font-size: 13px;
-        line-height: 1.5; transition: background 0.15s;
+        line-height: 1.55; transition: background var(--transition-fast);
     }
-    tr { transition: background 0.15s; }
+    tr { transition: background var(--transition-fast); }
     tr:hover td { background: var(--bg-hover); }
     tr.followed td {
         background: var(--accent-dim);
-        border-bottom-color: rgba(74,158,255,0.1);
+        border-bottom-color: rgba(74,158,255,0.08);
     }
     tr.followed td:first-child {
         box-shadow: inset 3px 0 0 var(--accent);
     }
-    tr.followed:hover td { background: rgba(74,158,255,0.2); }
-    td:first-child {
-        width: 10em; min-width: 10em; max-width: 10em;
-        white-space: nowrap; font-variant-numeric: tabular-nums;
-    }
-    a { color: var(--accent); text-decoration: none; transition: color 0.15s; }
+    tr.followed:hover td { background: rgba(74,158,255,0.18); }
+    td:first-child { white-space: nowrap; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+    td:nth-child(2) { font-size: 12px; word-break: break-word; overflow: hidden; }
+    td:nth-child(4) { text-align: right; white-space: nowrap; overflow: hidden; }
+    td:nth-child(5) { white-space: nowrap; }
+    td:nth-child(8) { overflow: hidden; text-overflow: ellipsis; }
+    td:nth-child(9) { overflow: hidden; text-overflow: ellipsis; }
+    a { color: var(--accent); text-decoration: none; transition: color var(--transition-fast); }
     a:hover { color: #7cbfff; text-decoration: underline; }
     b { color: var(--text-primary); font-weight: 600; }
     img {
-        border-radius: var(--radius); max-width: 200px; height: auto;
-        transition: transform 0.2s, box-shadow 0.2s;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        border-radius: var(--radius-sm); width: 100%; max-width: 100%; height: auto;
+        transition: transform var(--transition-base), box-shadow var(--transition-base), opacity 0.4s;
+        box-shadow: var(--shadow-sm);
     }
     @media (hover: hover) {
-        img:hover { transform: scale(1.03); box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        img:hover { transform: scale(1.03); box-shadow: var(--shadow-md); }
     }
     .hidden { display: none; }
     /* zebra */
     tbody tr:nth-child(even) td { background: var(--bg-secondary); }
     tbody tr:nth-child(even):hover td { background: var(--bg-hover); }
-    tbody tr.followed:nth-child(even) td { background: rgba(74,158,255,0.1); }
-    tbody tr.followed:nth-child(even):hover td { background: rgba(74,158,255,0.2); }
+    tbody tr.followed:nth-child(even) td { background: rgba(74,158,255,0.08); }
+    tbody tr.followed:nth-child(even):hover td { background: rgba(74,158,255,0.18); }
     /* genre pills */
     .genre-pill {
-        display: inline-block; padding: 3px 9px; margin: 2px 3px 2px 0;
-        border-radius: 12px; font-size: 11px; font-weight: 500;
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 3px 10px; margin: 2px 3px 2px 0;
+        border-radius: 20px; font-size: 11px; font-weight: 500;
         line-height: 1.4; white-space: nowrap;
+        transition: opacity var(--transition-fast);
     }
-    .genre-pill.techno { background: rgba(224,108,117,0.18); color: #e06c75; }
-    .genre-pill.dnb { background: rgba(198,120,221,0.18); color: #c678dd; }
-    .genre-pill.house { background: rgba(97,175,239,0.18); color: #61afef; }
-    .genre-pill.ambient { background: rgba(86,182,194,0.18); color: #56b6c2; }
-    .genre-pill.industrial { background: rgba(190,146,100,0.18); color: #be9264; }
-    .genre-pill.default { background: rgba(255,255,255,0.07); color: var(--text-secondary); }
+    .genre-pill .genre-count {
+        opacity: 0.6; font-size: 10px;
+    }
+    .genre-pill.techno { background: rgba(224,108,117,0.14); color: #e88a91; }
+    .genre-pill.dnb { background: rgba(198,120,221,0.14); color: #d496e8; }
+    .genre-pill.house { background: rgba(97,175,239,0.14); color: #79b8f0; }
+    .genre-pill.ambient { background: rgba(86,182,194,0.14); color: #6ec8d4; }
+    .genre-pill.industrial { background: rgba(190,146,100,0.14); color: #c8a87a; }
+    .genre-pill.default { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
     .genre-more { font-size: 11px; color: var(--text-muted); margin-left: 2px; }
     /* lineup */
     .artist-row {
-        padding: 4px 0; border-bottom: 1px solid var(--border);
+        padding: 5px 0; border-bottom: 1px solid var(--border);
         line-height: 1.5;
     }
     .artist-row:last-child { border-bottom: none; }
     .floor-label {
-        display: inline-block; font-weight: 700; color: var(--text-primary);
-        padding: 6px 0 2px; margin-top: 4px; font-size: 12px;
-        text-transform: uppercase; letter-spacing: 0.5px;
-        border-bottom: 1px solid var(--accent-dim);
+        display: inline-block; font-weight: 700; color: var(--orange);
+        padding: 6px 0 3px; margin-top: 4px; font-size: 11px;
+        text-transform: uppercase; letter-spacing: 0.8px;
+        border-bottom: 2px solid rgba(209,154,102,0.3);
     }
-    .artist-stats { color: var(--text-muted); font-size: 12px; }
+    .artist-stats { color: var(--text-muted); font-size: 11px; }
+    .artist-stats .stat-label { opacity: 0.7; }
+    .artist-stats .stat-val { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .artist-stats .stat-val.followed { color: var(--green); font-weight: 600; }
     /* strength bar */
     .str-bar {
-        display: inline-block; height: 8px;
-        border-radius: 4px; vertical-align: middle;
+        display: inline-block; height: 6px;
+        border-radius: 3px; vertical-align: middle;
     }
-    .str-fill { background: linear-gradient(90deg, var(--green), #5dba5d); }
+    .str-fill { background: linear-gradient(90deg, var(--green), #4db84d); }
+    .str-track {
+        display: inline-block; width: 60px; height: 6px;
+        background: rgba(255,255,255,0.06); border-radius: 3px; vertical-align: middle;
+        margin-left: 6px; position: relative; overflow: hidden;
+    }
+    .str-track .str-fill {
+        position: absolute; top: 0; left: 0; height: 100%;
+    }
     /* calendar icon */
     .cal-btn {
-        cursor: pointer; opacity: 0.4; font-size: 14px;
-        background: none; border: none; color: var(--accent); padding: 0 4px;
-        vertical-align: middle; transition: opacity 0.15s;
+        cursor: pointer; opacity: 0.35;
+        background: none; border: none; color: var(--accent); padding: 2px 4px;
+        vertical-align: middle; transition: opacity var(--transition-fast), transform var(--transition-fast);
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 28px; height: 28px; border-radius: var(--radius-xs);
     }
-    .cal-btn:hover { opacity: 1; }
+    .cal-btn svg { width: 15px; height: 15px; }
+    .cal-btn:hover { opacity: 1; background: var(--accent-dim); }
+    .cal-btn:active { transform: scale(0.9); }
+    /* rising badge */
+    .rising-badge {
+        display: inline-flex; align-items: center; gap: 2px;
+        color: var(--red); font-size: 12px; vertical-align: middle;
+    }
+    .rising-badge svg { width: 14px; height: 14px; }
+    /* similarity badge */
+    .sim-badge { color: var(--purple); font-size: 12px; }
+    .label-badge { color: #98c379; font-size: 12px; }
     /* artist expand */
     .artist-expand-btn {
         cursor: pointer; font-size: 11px; color: var(--text-muted);
-        background: none; border: none; padding: 2px 6px;
-        transition: color 0.15s;
+        background: none; border: none; padding: 2px 8px;
+        transition: color var(--transition-fast); border-radius: var(--radius-xs);
+        font-family: inherit;
     }
-    .artist-expand-btn:hover { color: var(--accent); }
+    .artist-expand-btn:hover { color: var(--accent); background: var(--accent-dim); }
     .artist-detail {
         font-size: 11px; color: var(--text-muted);
-        padding: 4px 0 4px 16px; line-height: 1.6;
+        padding: 6px 0 4px 16px; line-height: 1.6;
     }
     .artist-detail .tag-list {
-        display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px;
+        display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
     }
     .artist-detail .tag-chip {
-        background: rgba(255,255,255,0.06); padding: 1px 7px;
-        border-radius: 8px; font-size: 10px;
+        background: rgba(255,255,255,0.06); padding: 2px 8px;
+        border-radius: 10px; font-size: 10px;
+        transition: background var(--transition-fast);
     }
+    .artist-detail .tag-chip:hover { background: rgba(255,255,255,0.1); }
     /* card view */
     .card-grid {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-        gap: 16px; padding: 16px 24px 32px;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+        gap: 16px; padding: 16px clamp(8px, 2vw, 24px) 32px;
     }
     .event-card {
         background: var(--bg-card); border: 1px solid var(--border);
         border-radius: var(--radius); overflow: hidden;
-        transition: border-color 0.2s, box-shadow 0.2s;
+        transition: border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
+        display: flex; flex-direction: column;
     }
     .event-card:hover {
         border-color: var(--border-hover);
-        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        box-shadow: var(--shadow-md);
+        transform: translateY(-2px);
     }
-    .event-card.followed { border-left: 3px solid var(--accent); background: var(--accent-dim); }
+    .event-card.followed {
+        border-left: 3px solid var(--accent); background: var(--accent-dim);
+    }
+    .event-card .card-flyer { position: relative; overflow: hidden; }
     .event-card .card-flyer img {
         width: 100%; max-width: 100%; border-radius: 0;
+        display: block; aspect-ratio: 16/9; object-fit: cover;
     }
-    .event-card .card-body { padding: 14px; }
-    .event-card .card-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-    .event-card .card-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
-    .event-card .card-meta span { margin-right: 12px; }
-    .event-card .card-genres { margin-bottom: 8px; }
-    .event-card .card-lineup { border-top: 1px solid var(--border); padding-top: 8px; }
+    .event-card .card-flyer .card-date-badge {
+        position: absolute; bottom: 10px; left: 10px;
+        background: rgba(12,14,18,0.85); backdrop-filter: blur(8px);
+        padding: 5px 10px; border-radius: var(--radius-xs);
+        font-size: 12px; font-weight: 600; color: var(--text-primary);
+    }
+    .event-card .card-body { padding: 16px; flex: 1; display: flex; flex-direction: column; }
+    .event-card .card-header { margin-bottom: 10px; }
+    .event-card .card-title {
+        font-size: 15px; font-weight: 600; margin-bottom: 6px;
+        display: flex; align-items: flex-start; gap: 4px;
+    }
+    .event-card .card-title a { flex: 1; }
+    .event-card .card-meta {
+        font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;
+        display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center;
+    }
+    .event-card .card-meta .meta-item {
+        display: inline-flex; align-items: center; gap: 4px;
+    }
+    .event-card .card-meta svg { width: 12px; height: 12px; opacity: 0.5; }
+    .event-card .card-genres { margin-bottom: 10px; }
+    .event-card .card-tickets {
+        font-size: 12px; color: var(--text-secondary);
+        padding: 8px 0; border-top: 1px solid var(--border);
+        margin-bottom: 4px; display: flex; flex-direction: column; gap: 3px;
+    }
+    .event-card .card-tickets .ticket-row {
+        display: flex; justify-content: space-between; align-items: baseline;
+    }
+    .event-card .card-tickets .ticket-price { font-weight: 600; color: var(--text-primary); white-space: nowrap; margin-left: 8px; }
+    .event-card .card-tickets .sold-out { color: var(--red); font-weight: 600; }
+    .event-card .card-strength {
+        font-size: 12px; color: var(--text-muted); margin-bottom: 8px;
+        display: flex; align-items: center; gap: 6px;
+    }
+    .event-card .card-lineup {
+        border-top: 1px solid var(--border); padding-top: 10px;
+    }
     /* scrollbar */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: var(--bg-primary); }
     ::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
+    * { scrollbar-width: thin; scrollbar-color: var(--bg-elevated) var(--bg-primary); }
     /* static fallback */
     .static-fallback { padding: 16px 24px 32px; }
     /* transitions */
     .row-move { transition: transform 0.3s ease; }
+    /* empty state */
+    .empty-state {
+        text-align: center; padding: 80px 24px; color: var(--text-muted);
+    }
+    .empty-state svg { width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.3; }
+    .empty-state h3 {
+        font-size: 16px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;
+    }
+    .empty-state p { font-size: 13px; max-width: 320px; margin: 0 auto; line-height: 1.5; }
+    /* kbd hint */
+    .kbd {
+        display: inline-block; padding: 1px 5px; font-size: 10px;
+        background: var(--bg-elevated); border: 1px solid var(--border-hover);
+        border-radius: 3px; font-family: inherit; color: var(--text-muted);
+        vertical-align: middle; line-height: 1.4;
+    }
     /* responsive */
+    @media (max-width: 1200px) {
+        td:nth-child(10), th:nth-child(10) { display: none; }
+        td:nth-child(9), th:nth-child(9) { display: none; }
+    }
     @media (max-width: 900px) {
-        .toolbar { padding: 12px 14px; }
+        .toolbar { padding: 10px 14px; }
         .toolbar input[type="text"] { width: 100%; }
+        .toolbar-brand { font-size: 14px; }
+        .toolbar-sep { display: none; }
         .table-wrap, .card-grid { padding: 8px 8px 24px; }
         td, th { padding: 8px 8px; font-size: 12px; }
         img { max-width: 140px; }
     }
     @media (max-width: 768px) {
+        .toolbar-brand .brand-text { display: none; }
         .table-wrap { padding: 8px; }
         table, thead, tbody, tr, th, td { display: block; width: 100%; }
         thead { position: static; display: none; }
@@ -846,12 +1006,12 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
         tbody tr td:first-child { box-shadow: none; }
         td {
             padding: 8px 14px; border-bottom: 1px solid var(--border);
-            position: relative; min-height: 28px; width: auto; min-width: 0; max-width: none; white-space: normal;
+            position: relative; min-height: 28px; width: auto !important; min-width: 0; max-width: none; white-space: normal; overflow: visible;
         }
         td:last-child { border-bottom: none; }
         td::before {
             content: attr(data-label); display: block; font-size: 10px; font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin-bottom: 4px;
+            text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 4px;
         }
         td[data-label="flyer"] img { max-width: 100%; width: 100%; border-radius: var(--radius) var(--radius) 0 0; }
         td[data-label="flyer"] { padding: 0; order: -1; }
@@ -862,6 +1022,7 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
         td[data-label="lineup"] .artist-row { font-size: 12px; }
         td[data-label="lineup"] .artist-stats { font-size: 11px; }
         .card-grid { grid-template-columns: 1fr; padding: 8px; }
+        .event-card:hover { transform: none; }
     }
 </style>
 </head>
@@ -873,16 +1034,27 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
 <div id="app" style="display:none;">
     <!-- Toolbar -->
     <div class="toolbar">
-        <input type="text" v-model="searchQuery" placeholder="Search artists, venues, promoters..."
-               @keydown.escape="searchQuery = ''">
+        <div class="toolbar-brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <span class="brand-text">cuepoint</span>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" v-model="searchQuery" placeholder="Search artists, venues, promoters..."
+                   @keydown.escape="searchQuery = ''" aria-label="Search events">
+        </div>
         <label><input type="checkbox" v-model="followedOnly"> Followed only</label>
 
         <!-- Genre dropdown -->
         <div class="genre-dropdown" ref="genreDropdown">
-            <button class="genre-dropdown-btn" @click="genreDropdownOpen = !genreDropdownOpen">
-                Genres {{ selectedGenres.length ? '(' + selectedGenres.length + ')' : '' }} &#9662;
+            <button class="genre-dropdown-btn" @click="genreDropdownOpen = !genreDropdownOpen" aria-haspopup="true" :aria-expanded="genreDropdownOpen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+                Genres {{ selectedGenres.length ? '(' + selectedGenres.length + ')' : '' }}
             </button>
-            <div class="genre-panel" v-if="genreDropdownOpen" ref="genrePanel">
+            <div class="genre-panel" v-if="genreDropdownOpen" ref="genrePanel" role="listbox">
                 <label v-for="g in allGenres" :key="g">
                     <input type="checkbox" :value="g" v-model="selectedGenres">
                     {{ g }}
@@ -895,19 +1067,24 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
-        <button class="view-toggle" :class="{active: viewMode === 'card'}" @click="toggleView">
-            {{ viewMode === 'table' ? '&#9638; Cards' : '&#9776; Table' }}
+        <button class="view-toggle" :class="{active: viewMode === 'card'}" @click="toggleView" :title="viewMode === 'table' ? 'Switch to card view (V)' : 'Switch to table view (V)'">
+            <svg v-if="viewMode === 'table'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            {{ viewMode === 'table' ? 'Cards' : 'Table' }}
         </button>
-        <button class="ics-export" @click="exportICS">Export .ics</button>
+        <button class="ics-export" @click="exportICS" title="Export all filtered events as .ics">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export .ics
+        </button>
         <span class="count">{{ visibleCount === totalCount ? totalCount + ' events' : visibleCount + ' / ' + totalCount + ' events' }}</span>
     </div>
 
     <!-- Table view -->
     <div class="table-wrap" v-if="viewMode === 'table'">
-        <table>
+        <table v-if="filteredEvents.length">
             <thead>
                 <tr>
-                    <th v-for="col in columns" :key="col.key" @click="sortBy(col.key)">
+                    <th v-for="col in columns" :key="col.key" @click="sortBy(col.key)" :style="{width: col.w}" :aria-sort="sortColumn === col.key ? (sortAsc ? 'ascending' : 'descending') : 'none'">
                         {{ col.label }}<span class="arrow" v-if="sortColumn === col.key">{{ sortAsc ? '\u25B2' : '\u25BC' }}</span>
                     </th>
                 </tr>
@@ -921,14 +1098,21 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
                     </td>
                     <td data-label="tickets" v-html="formatTickets(ev)"></td>
                     <td data-label="title">
-                        <button class="cal-btn" @click="downloadSingleICS(ev)" title="Download .ics">&#128197;</button>
+                        <button class="cal-btn" @click="downloadSingleICS(ev)" title="Download .ics" aria-label="Download calendar event">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                        </button>
                         <a :href="ev.eventUrl">{{ ev.title }}</a>
                     </td>
-                    <td data-label="attenders" :data-sort="ev.attending">{{ ev.attending }}</td>
-                    <td data-label="strength" :data-sort="ev.notableCount" v-html="formatStrength(ev)"></td>
+                    <td data-label="attenders" :data-sort="ev.attending">{{ fmtNum(ev.attending) }}</td>
+                    <td data-label="strength" :data-sort="ev.notableCount">
+                        <template v-if="ev.totalArtists">
+                            <span style="font-variant-numeric:tabular-nums">{{ ev.notableCount }}/{{ ev.totalArtists }}</span>
+                            <span class="str-track" v-if="ev.notableCount"><span class="str-fill" :style="{width: Math.round(ev.notableCount/ev.totalArtists*100)+'%'}"></span></span>
+                        </template>
+                    </td>
                     <td data-label="genre">
                         <span v-for="g in ev.genres" :key="g.name" :class="'genre-pill ' + g.category">
-                            {{ g.name }} {{ g.count }}
+                            {{ g.name }} <span class="genre-count">{{ g.count }}</span>
                         </span>
                     </td>
                     <td data-label="lineup">
@@ -939,24 +1123,28 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
                                     <a :href="a.scUrl"><b v-if="a.isFollowed">{{ a.name }}</b><span v-else>{{ a.name }}</span></a>
                                 </template>
                                 <span v-else>{{ a.name }}</span>
-                                <span class="artist-stats" v-if="a.scFollowers || a.dcHave || a.bcSupporters || a.raFollowers">
+                                <span class="artist-stats" v-if="a.scFollowers || a.dcHave || a.bcUrl || a.raFollowers">
                                     <template v-if="a.scFollowers">
-                                        <span v-if="a.isFollowed" style="color:var(--green)"><b>SC</b></span>
-                                        <span v-else>SC</span>: <span style="color:var(--red)">{{ a.scFollowers }}</span>
+                                        <span :class="a.isFollowed ? 'stat-val followed' : 'stat-label'">SC</span>
+                                        <span class="stat-val">{{ fmtNum(a.scFollowers) }}</span>
                                     </template>
-                                    <template v-if="a.dcHave"> &middot; DC: {{ a.dcHave }}#{{ a.dcRatio }}#{{ a.dcRating }}</template>
-                                    <template v-if="a.bcSupporters">
-                                        &middot; <a v-if="a.bcUrl" :href="a.bcUrl">BC</a><span v-else>BC</span>: <span style="color:var(--red)">{{ a.bcSupporters }}</span>
-                                        <span v-if="a.bcLatestRelease" style="color:var(--muted);font-size:0.85em;"> ({{ a.bcLatestRelease }})</span>
+                                    <template v-if="a.dcHave"> &middot; <span class="stat-label">DC</span> <span class="stat-val">{{ fmtNum(a.dcHave) }}</span> <span style="opacity:0.4">r{{ a.dcRatio }}</span></template>
+                                    <template v-if="a.bcUrl">
+                                        &middot; <a :href="a.bcUrl" class="stat-label">BC</a>
+                                        <span v-if="a.bcSupporters" class="stat-val">{{ fmtNum(a.bcSupporters) }}</span>
+                                        <span v-if="a.bcLatestRelease" style="opacity:0.4;font-size:0.85em;"> {{ a.bcLatestRelease }}</span>
                                     </template>
-                                    <template v-if="a.raFollowers"> &middot; <span style="color:#d19a66;">RA: {{ a.raFollowers }}</span></template>
+                                    <template v-if="a.raFollowers"> &middot; <span style="color:var(--orange);">RA {{ fmtNum(a.raFollowers) }}</span></template>
                                 </span>
-                                <i v-if="a.country"> ({{ a.country }})</i>
-                                <span v-if="a.rising" title="Rising artist" style="color:#e06c75;">&#128293;</span>
-                                <span v-if="a.similarTo" :title="a.similarityScore + '% similar'" style="color:#c678dd;">~ {{ a.similarTo }}</span>
-                                <span v-if="a.sharedLabels.length" style="color:#98c379;">[{{ a.sharedLabels.join(', ') }}]</span>
-                                <button class="artist-expand-btn" v-if="a.tags.length" @click="a.expanded = !a.expanded">
-                                    {{ a.expanded ? '&#9660;' : '&#9654;' }} tags
+                                <i v-if="a.country" style="color:var(--text-muted);"> ({{ a.country }})</i>
+                                <span v-if="a.rising" class="rising-badge" title="Rising artist">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                                </span>
+                                <span v-if="a.similarTo" class="sim-badge" :title="a.similarityScore + '% similar'">~ {{ a.similarTo }}</span>
+                                <span v-if="a.sharedLabels.length" class="label-badge">[{{ a.sharedLabels.join(', ') }}]</span>
+                                <button class="artist-expand-btn" v-if="a.tags.length" @click="a.expanded = !a.expanded" :aria-expanded="a.expanded" aria-label="Toggle tags">
+                                    <svg :style="{transform: a.expanded ? 'rotate(90deg)' : 'none', transition: 'transform 150ms'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px;display:inline;vertical-align:middle;"><polyline points="9 18 15 12 9 6"/></svg>
+                                    tags
                                 </button>
                                 <div class="artist-detail" v-if="a.expanded">
                                     <div class="tag-list">
@@ -975,11 +1163,16 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
                         </template>
                     </td>
                     <td data-label="flyer">
-                        <img v-if="ev.flyer" :src="ev.flyer" alt="flyer" style="width:200px; height:auto;">
+                        <img v-if="ev.flyer" :src="ev.flyer" alt="Event flyer" loading="lazy" style="width:100%; height:auto;">
                     </td>
                 </tr>
             </tbody>
         </table>
+        <div class="empty-state" v-if="!filteredEvents.length">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
+            <h3>No events match your filters</h3>
+            <p>Try adjusting your search query, genre selection, or disable "Followed only" to see more results.</p>
+        </div>
     </div>
 
     <!-- Card view -->
@@ -987,22 +1180,55 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="event-card" v-for="ev in filteredEvents" :key="ev.id"
              :class="{followed: ev.hasFollowed}">
             <div class="card-flyer" v-if="ev.flyer">
-                <img :src="ev.flyer" alt="flyer">
+                <img :src="ev.flyer" alt="Event flyer" loading="lazy">
+                <div class="card-date-badge">{{ formatDate(ev.startTime) }}</div>
             </div>
             <div class="card-body">
-                <div class="card-title">
-                    <button class="cal-btn" @click="downloadSingleICS(ev)" title="Download .ics">&#128197;</button>
-                    <a :href="ev.eventUrl">{{ ev.title }}</a>
-                </div>
-                <div class="card-meta">
-                    <span>{{ formatDate(ev.startTime) }} {{ formatTimeRange(ev.startTime, ev.endTime) }}</span>
-                    <span><a :href="ev.venueUrl">{{ ev.venueName }}</a></span>
-                    <span v-if="ev.attending">{{ ev.attending }} attending</span>
+                <div class="card-header">
+                    <div class="card-title">
+                        <button class="cal-btn" @click="downloadSingleICS(ev)" title="Download .ics" aria-label="Download calendar event">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                        </button>
+                        <a :href="ev.eventUrl">{{ ev.title }}</a>
+                    </div>
+                    <div class="card-meta">
+                        <span class="meta-item" v-if="!ev.flyer">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                            {{ formatDate(ev.startTime) }}
+                        </span>
+                        <span class="meta-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            {{ formatTimeRange(ev.startTime, ev.endTime) }}
+                        </span>
+                        <span class="meta-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                            <a :href="ev.venueUrl">{{ ev.venueName }}</a>
+                        </span>
+                        <span class="meta-item" v-if="ev.attending">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            {{ fmtNum(ev.attending) }}
+                        </span>
+                    </div>
                 </div>
                 <div class="card-genres">
                     <span v-for="g in ev.genres" :key="g.name" :class="'genre-pill ' + g.category">
-                        {{ g.name }} {{ g.count }}
+                        {{ g.name }} <span class="genre-count">{{ g.count }}</span>
                     </span>
+                </div>
+                <div class="card-strength" v-if="ev.totalArtists && ev.notableCount">
+                    Strength: {{ ev.notableCount }}/{{ ev.totalArtists }}
+                    <span class="str-track"><span class="str-fill" :style="{width: Math.round(ev.notableCount/ev.totalArtists*100)+'%'}"></span></span>
+                </div>
+                <div class="card-tickets" v-if="ev.tickets && ev.tickets.length">
+                    <template v-if="ev.tickets.every(t => t.soldOut)">
+                        <span class="sold-out">SOLD OUT</span>
+                    </template>
+                    <template v-else>
+                        <div class="ticket-row" v-for="t in ev.tickets.filter(t => !t.soldOut).sort((a, b) => a.price - b.price)" :key="t.title">
+                            <span class="ticket-name">{{ cleanTicketTitle(t.title) }}</span>
+                            <span class="ticket-price">{{ t.symbol }}{{ t.price.toFixed(2) }}</span>
+                        </div>
+                    </template>
                 </div>
                 <div class="card-lineup">
                     <template v-for="(a, idx) in ev.artists" :key="idx">
@@ -1012,12 +1238,31 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
                                 <a :href="a.scUrl"><b v-if="a.isFollowed">{{ a.name }}</b><span v-else>{{ a.name }}</span></a>
                             </template>
                             <span v-else>{{ a.name }}</span>
-                            <span class="artist-stats" v-if="a.scFollowers">SC: <span style="color:var(--red)">{{ a.scFollowers }}</span></span>
-                            <span v-if="a.rising" style="color:#e06c75;">&#128293;</span>
+                            <span class="artist-stats" v-if="a.scFollowers || a.dcHave || a.bcUrl">
+                                <template v-if="a.scFollowers">
+                                    <span :class="a.isFollowed ? 'stat-val followed' : 'stat-label'">SC</span>
+                                    <span class="stat-val">{{ fmtNum(a.scFollowers) }}</span>
+                                </template>
+                                <template v-if="a.dcHave"> &middot; <span class="stat-label">DC</span> <span class="stat-val">{{ fmtNum(a.dcHave) }}</span></template>
+                                <template v-if="a.bcUrl">
+                                    &middot; <a :href="a.bcUrl" class="stat-label">BC</a>
+                                    <span v-if="a.bcSupporters" class="stat-val">{{ fmtNum(a.bcSupporters) }}</span>
+                                    <span v-if="a.bcLatestRelease" style="opacity:0.4;font-size:0.85em;"> {{ a.bcLatestRelease }}</span>
+                                </template>
+                            </span>
+                            <span v-if="a.rising" class="rising-badge" title="Rising artist">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                            </span>
+                            <span v-if="a.similarTo" class="sim-badge">~ {{ a.similarTo }}</span>
                         </div>
                     </template>
                 </div>
             </div>
+        </div>
+        <div class="empty-state" v-if="!filteredEvents.length">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
+            <h3>No events match your filters</h3>
+            <p>Try adjusting your search query, genre selection, or disable "Followed only" to see more results.</p>
         </div>
     </div>
 </div>
@@ -1026,14 +1271,12 @@ _VUE_HTML_TEMPLATE = r"""<!DOCTYPE html>
 /* __VUE_RUNTIME__ */
 </script>
 <script>
-const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
 
-const eventsData = "__EVENTS_DATA__";
-
-// Add reactive _expanded to each artist
-eventsData.forEach(ev => {
+const eventsData = reactive("__EVENTS_DATA__".map(ev => {
     ev.artists.forEach(a => { a.expanded = false; });
-});
+    return ev;
+}));
 
 createApp({
     setup() {
@@ -1047,16 +1290,16 @@ createApp({
         const genreDropdown = ref(null);
 
         const columns = [
-            { key: 'time', label: 'Time' },
-            { key: 'tickets', label: 'Tickets' },
-            { key: 'title', label: 'Title' },
-            { key: 'attenders', label: 'Attenders' },
-            { key: 'strength', label: 'Strength' },
-            { key: 'genre', label: 'Genre' },
-            { key: 'lineup', label: 'Lineup' },
-            { key: 'venue', label: 'Venue' },
-            { key: 'promoters', label: 'Promoters' },
-            { key: 'flyer', label: 'Flyer' },
+            { key: 'time', label: 'Time', w: '8%' },
+            { key: 'tickets', label: 'Tickets', w: '7%' },
+            { key: 'title', label: 'Title', w: '12%' },
+            { key: 'attenders', label: 'Attenders', w: '4%' },
+            { key: 'strength', label: 'Strength', w: '6%' },
+            { key: 'genre', label: 'Genre', w: '10%' },
+            { key: 'lineup', label: 'Lineup', w: '24%' },
+            { key: 'venue', label: 'Venue', w: '7%' },
+            { key: 'promoters', label: 'Promoters', w: '7%' },
+            { key: 'flyer', label: 'Flyer', w: '15%' },
         ];
 
         const allGenres = computed(() => {
@@ -1144,20 +1387,24 @@ createApp({
             return pad(s.getHours()) + ':' + pad(s.getMinutes()) + ' - ' + pad(e.getHours()) + ':' + pad(e.getMinutes());
         }
 
-        function formatStrength(ev) {
-            if (!ev.totalArtists) return '';
-            if (!ev.notableCount) return '0/' + ev.totalArtists;
-            const pct = ev.notableCount / ev.totalArtists;
-            const w = Math.max(1, Math.round(pct * 60));
-            return ev.notableCount + '/' + ev.totalArtists + ' <span class="str-bar str-fill" style="width:' + w + 'px;"></span>';
+        function cleanTicketTitle(title) {
+            return title.replace(/\s*\([^)]*(?:£|€|\$|bf|BF|booking)[^)]*\)/gi, '').trim();
+        }
+
+        function fmtNum(n) {
+            if (n == null || n === 0) return '0';
+            if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            if (n >= 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            if (n >= 1000) return n.toLocaleString('en-US');
+            return String(n);
         }
 
         function formatTickets(ev) {
             if (!ev.tickets || !ev.tickets.length) return '';
-            var available = ev.tickets.filter(t => !t.soldOut);
-            if (!available.length) return '<span style="color:var(--red);">SOLD OUT</span>';
+            var available = ev.tickets.filter(t => !t.soldOut).sort((a, b) => a.price - b.price);
+            if (!available.length) return '<span style="color:var(--red);font-weight:600;">SOLD OUT</span>';
             return available.map(t => {
-                return 'ticket-' + t.title + ' (' + t.symbol + t.price.toFixed(2) + ')';
+                return '<span>' + cleanTicketTitle(t.title) + ' <b>' + t.symbol + t.price.toFixed(2) + '</b></span>';
             }).join('<br>');
         }
 
@@ -1173,7 +1420,7 @@ createApp({
             const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '').substring(0, 15) + 'Z';
             return [
                 'BEGIN:VEVENT',
-                'UID:' + ev.id + '@techno_scan',
+                'UID:' + ev.id + '@cuepoint',
                 'DTSTAMP:' + now,
                 'DTSTART:' + toICSDate(ev.startTime),
                 'DTEND:' + toICSDate(ev.endTime),
@@ -1201,7 +1448,7 @@ createApp({
             if (!isIOS && a.href.startsWith('blob:')) URL.revokeObjectURL(a.href);
         }
         function downloadSingleICS(ev) {
-            const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//techno_scan//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n' + buildVEvent(ev) + '\r\nEND:VCALENDAR';
+            const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//cuepoint//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n' + buildVEvent(ev) + '\r\nEND:VCALENDAR';
             const name = (ev.title || 'event').replace(/[^a-zA-Z0-9_@ -]/g, '').substring(0, 60) + '.ics';
             downloadBlob(name, ics);
         }
@@ -1209,8 +1456,8 @@ createApp({
             const events = filteredEvents.value;
             if (!events.length) return;
             const vevents = events.map(buildVEvent).join('\r\n');
-            const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//techno_scan//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n' + vevents + '\r\nEND:VCALENDAR';
-            downloadBlob('techno_scan_events.ics', ics);
+            const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//cuepoint//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n' + vevents + '\r\nEND:VCALENDAR';
+            downloadBlob('cuepoint_events.ics', ics);
         }
 
         // Close genre dropdown on outside click/tap (fixes iOS touch)
@@ -1234,7 +1481,7 @@ createApp({
             searchQuery, followedOnly, sortColumn, sortAsc, viewMode,
             genreDropdownOpen, selectedGenres, genreDropdown,
             columns, allGenres, filteredEvents, visibleCount, totalCount,
-            sortBy, toggleView, formatDate, formatTimeRange, formatStrength, formatTickets,
+            sortBy, toggleView, formatDate, formatTimeRange, fmtNum, formatTickets, cleanTicketTitle,
             downloadSingleICS, exportICS,
         };
     }
@@ -1243,8 +1490,17 @@ createApp({
 document.getElementById('app').style.display = '';
 var sf = document.getElementById('static-view');
 if (sf) sf.style.display = 'none';
+// Sync sticky thead offset with actual toolbar height
+(function() {
+    var tb = document.querySelector('.toolbar');
+    if (!tb) return;
+    function sync() { document.documentElement.style.setProperty('--toolbar-h', tb.offsetHeight + 'px'); }
+    sync();
+    window.addEventListener('resize', sync);
+    new ResizeObserver(sync).observe(tb);
+})();
 </script>
-<footer style="text-align:center;padding:1rem 0;color:var(--text-muted);font-size:0.75rem;border-top:1px solid var(--border)"><!-- __STATS_FOOTER__ --></footer>
+<footer style="text-align:center;padding:1.5rem 24px;color:var(--text-muted);font-size:0.75rem;border-top:1px solid var(--border);max-width:none;margin:0 auto;"><!-- __STATS_FOOTER__ --></footer>
 </body>
 </html>
 """

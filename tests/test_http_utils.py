@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from techno_scan.http_utils import _calc_delay, retry_on_failure
+from cuepoint.http_utils import _calc_delay, retry_on_failure
 
 # ---------------------------------------------------------------------------
 # _calc_delay
@@ -56,7 +56,7 @@ class TestCalcDelay:
 
 
 class TestRetryOnFailure:
-    @patch("techno_scan.http_utils.time.sleep")
+    @patch("cuepoint.http_utils.time.sleep")
     def test_no_retry_on_success(self, mock_sleep):
         @retry_on_failure(max_retries=3)
         def ok():
@@ -68,7 +68,7 @@ class TestRetryOnFailure:
         assert result.status_code == 200
         mock_sleep.assert_not_called()
 
-    @patch("techno_scan.http_utils.time.sleep")
+    @patch("cuepoint.http_utils.time.sleep")
     def test_retries_on_429_then_succeeds(self, mock_sleep):
         call_count = [0]
 
@@ -85,7 +85,7 @@ class TestRetryOnFailure:
         assert call_count[0] == 2
         assert mock_sleep.call_count == 1
 
-    @patch("techno_scan.http_utils.time.sleep")
+    @patch("cuepoint.http_utils.time.sleep")
     def test_retries_exhausted_returns_last_response(self, mock_sleep):
         @retry_on_failure(max_retries=2, base_delay=0.01)
         def always_503():
@@ -98,7 +98,7 @@ class TestRetryOnFailure:
         assert result.status_code == 503  # returns last bad response
         assert mock_sleep.call_count == 2
 
-    @patch("techno_scan.http_utils.time.sleep")
+    @patch("cuepoint.http_utils.time.sleep")
     def test_retries_on_connection_error(self, mock_sleep):
         call_count = [0]
 
@@ -115,7 +115,7 @@ class TestRetryOnFailure:
         assert result.status_code == 200
         assert call_count[0] == 3
 
-    @patch("techno_scan.http_utils.time.sleep")
+    @patch("cuepoint.http_utils.time.sleep")
     def test_non_retryable_exception_raises_immediately(self, mock_sleep):
         @retry_on_failure(max_retries=3, base_delay=0.01)
         def bad():
@@ -125,7 +125,7 @@ class TestRetryOnFailure:
             bad()
         mock_sleep.assert_not_called()
 
-    @patch("techno_scan.http_utils.time.sleep")
+    @patch("cuepoint.http_utils.time.sleep")
     def test_non_retryable_status_returns_immediately(self, mock_sleep):
         @retry_on_failure(max_retries=3, base_delay=0.01)
         def not_found():
@@ -137,7 +137,7 @@ class TestRetryOnFailure:
         assert result.status_code == 404
         mock_sleep.assert_not_called()
 
-    @patch("techno_scan.http_utils.time.sleep")
+    @patch("cuepoint.http_utils.time.sleep")
     def test_retries_on_http_error_with_retryable_status(self, mock_sleep):
         call_count = [0]
 

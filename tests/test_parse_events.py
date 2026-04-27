@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from techno_scan.event_fetcher import parse_events_list
+from cuepoint.event_fetcher import parse_events_list
 
 
 def test_single_event(sample_ra_event):

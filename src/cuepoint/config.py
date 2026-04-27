@@ -11,6 +11,7 @@ from typing import Any, TypeVar
 from .generic import BASE_PATH
 
 _CONFIG_PATH = BASE_PATH / "config.toml"
+_CONFIG_EXAMPLE_PATH = BASE_PATH / "config.toml.example"
 _cfg: dict[str, Any] | None = None
 
 _T = TypeVar("_T")
@@ -20,8 +21,9 @@ def _load() -> None:
     global _cfg
     if _cfg is not None:
         return
+    path = _CONFIG_PATH if _CONFIG_PATH.exists() else _CONFIG_EXAMPLE_PATH
     try:
-        with open(_CONFIG_PATH, "rb") as f:
+        with open(path, "rb") as f:
             _cfg = tomllib.load(f)
     except FileNotFoundError:
         _cfg = {}
@@ -150,6 +152,10 @@ def rising_sc_pct() -> int:
 
 def rising_dc_pct() -> int:
     return _get("discovery", "rising_dc_pct", 30)
+
+
+def similarity_threshold() -> float:
+    return _get("discovery", "similarity_threshold", 0.5)
 
 
 # -- Scoring: discovery signals --

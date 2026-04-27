@@ -1,6 +1,6 @@
 """Tests for config.py — typed accessors from config.toml."""
 
-from techno_scan import config as cfg
+from cuepoint import config as cfg
 
 
 def test_defaults_with_empty_config(monkeypatch):

@@ -26,3 +26,6 @@ chromedriver/
 get-pip.py
 lib/scratch/
 .vscode/
+
+config.toml
+following.txt

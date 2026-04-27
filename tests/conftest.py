@@ -1,9 +1,18 @@
-"""Shared pytest fixtures for techno_scan tests."""
+"""Shared pytest fixtures for cuepoint tests."""
 
 import json
 
 import pandas as pd
 import pytest
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _close_db_at_exit():
+    """Close any sqlite connections leaked by module-level init_db()."""
+    yield
+    from cuepoint import db as store
+
+    store.close_db()
 
 
 @pytest.fixture
@@ -160,8 +169,8 @@ def sample_df(sample_artist_info):
 @pytest.fixture
 def mock_config(monkeypatch):
     """Monkeypatch config._cfg with known test values and FOLLOWING set."""
-    from techno_scan import config as cfg
-    from techno_scan import following
+    from cuepoint import config as cfg
+    from cuepoint import following
 
     monkeypatch.setattr(following, "FOLLOWING", {"/dj-q-mono"})
     monkeypatch.setattr(following, "_FOLLOWING_EXPANDED", following._build_expanded({"/dj-q-mono"}))
@@ -190,11 +199,12 @@ def mock_config(monkeypatch):
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
     """Point db module at a temp SQLite file and init tables."""
-    from techno_scan import db as store
+    from cuepoint import db as store
 
+    store.close_db()
     db_file = tmp_path / "test.db"
     monkeypatch.setattr(store, "DB_PATH", db_file)
-    # Reset thread-local connection so it reconnects to new path
     store._local = __import__("threading").local()
     store.init_db()
-    return db_file
+    yield db_file
+    store.close_db()

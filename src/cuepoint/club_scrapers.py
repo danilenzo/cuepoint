@@ -1,8 +1,10 @@
 """
-Club website scrapers (no RA dependency, requests-only):
+Club website scrapers (no RA dependency, async httpx):
   - Openground  (Wuppertal — static HTML + Schema.org JSON-LD)
   - Khidi       (Tbilisi — static HTML, pipe-separated lineups)
   - Bassiani    (Tbilisi — JSON API)
+  - Berghain    (Berlin — listing page)
+  - Tresor      (Berlin — listing + detail pages)
 
 Each scraper returns a list of event dicts ready to be turned into a DataFrame.
 The dicts include a '_prefilled_artists_info' key so the main enrichment
@@ -13,19 +15,36 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"}
 
-# Shared session for club scrapers — reuses TCP connections per host
-_session = requests.Session()
-_session.headers.update(HEADERS)
+_client: httpx.AsyncClient | None = None
+
+
+async def _get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(
+            headers=HEADERS,
+            timeout=15.0,
+            follow_redirects=True,
+        )
+    return _client
+
+
+async def close_client() -> None:
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
 
 MONTH_MAP = {
     "JANUARY": 1,
@@ -48,7 +67,7 @@ TECHNO_GENRE = [{"id": "1", "name": "Techno", "slug": "techno"}]
 # Club scraper registry
 # ---------------------------------------------------------------------------
 
-_ClubScraper = Callable[[datetime, datetime], list[dict[str, Any]]]
+_ClubScraper = Callable[[datetime, datetime], Awaitable[list[dict[str, Any]]]]
 _REGISTRY: dict[str, list[_ClubScraper]] = {}
 
 
@@ -57,7 +76,7 @@ def register_club(city: str) -> Callable[[_ClubScraper], _ClubScraper]:
 
     Usage:
         @register_club("Berlin")
-        def scrape_berghain(start_date, end_date): ...
+        async def scrape_berghain(start_date, end_date): ...
     """
 
     def decorator(fn: _ClubScraper) -> _ClubScraper:
@@ -72,13 +91,13 @@ def get_registered_cities() -> list[str]:
     return list(_REGISTRY.keys())
 
 
-def scrape_city_clubs(city: str, start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
+async def scrape_city_clubs(city: str, start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
     """Run all registered scrapers for a city and combine results."""
     scrapers = _REGISTRY.get(city, [])
-    all_events = []
+    all_events: list[dict[str, Any]] = []
     for scraper in scrapers:
         try:
-            all_events.extend(scraper(start_date, end_date))
+            all_events.extend(await scraper(start_date, end_date))
         except Exception as e:
             logger.warning(f"{scraper.__name__} failed: {e}")
     return all_events
@@ -142,7 +161,6 @@ def _event_dict(
     flyer: str | None = None,
     tickets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    # Use URL-derived slug for event_id to keep same-day events unique
     url_slug = re.sub(r"[^a-z0-9]+", "_", url.lower()).strip("_")
     event_id = f"{venue_id}_{url_slug}"
     return {
@@ -204,7 +222,6 @@ def _openground_parse_detail_page(dsoup: BeautifulSoup) -> list[dict[str, Any]]:
 
             stub = _stub_artist("openground", name)
 
-            # SoundCloud URL from the artist bio links on the detail page
             links_div = item.find("div", class_="event-item__accordion-content-links")
             if links_div:
                 for a in links_div.find_all("a", href=True):
@@ -242,7 +259,7 @@ def _openground_artists_from_anchor(anchor: BeautifulSoup) -> list[dict[str, Any
 
 
 @register_club("Wuppertal")
-def scrape_openground(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
+async def scrape_openground(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
     """
     1. Fetch the homepage to find all event links in the date range.
     2. For each event, fetch the detail page and parse performers from JSON-LD.
@@ -250,18 +267,18 @@ def scrape_openground(start_date: datetime, end_date: datetime) -> list[dict[str
     """
     events = []
     try:
-        r = _session.get(f"{_OPENGROUND_BASE}/en/", timeout=15)
+        client = await _get_client()
+        r = await client.get(f"{_OPENGROUND_BASE}/en/")
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
 
-        # Collect all schedule links whose URL date is in range
         all_links = soup.find_all("a", href=re.compile(r"/en/schedule/\d{4}-\d{2}-\d{2}"))
         logger.info(f"Openground: found {len(all_links)} total schedule links on homepage")
         for a in all_links:
             logger.debug(f"  Openground link: {a['href']}")
 
         in_range = []
-        seen_hrefs = set()
+        seen_hrefs: set[str] = set()
         for anchor in all_links:
             href = anchor["href"]
             if href in seen_hrefs:
@@ -281,13 +298,11 @@ def scrape_openground(start_date: datetime, end_date: datetime) -> list[dict[str
 
         for event_dt, href, anchor in in_range:
             url = _OPENGROUND_BASE + href
-            artists = []
+            artists: list[dict[str, Any]] = []
             end_dt = event_dt + timedelta(hours=8)
             title = "Clubnight @ Openground"
-            tickets = []
+            tickets: list[dict[str, Any]] = []
 
-            # Extract ticket price from the parent container (e.g. "Tickets 20€")
-            # The price text is outside the <a> tag, in the parent div.newhome-block-box
             box = anchor.find_parent("div", class_="newhome-block-box")
             box_text = box.get_text(" ", strip=True) if box else anchor.get_text(" ", strip=True)
             price_match = re.search(r"Tickets\s+(\d+)", box_text)
@@ -298,19 +313,16 @@ def scrape_openground(start_date: datetime, end_date: datetime) -> list[dict[str
             elif re.search(r"Sold\s+out", box_text, re.IGNORECASE):
                 tickets = [_make_ticket(0, "EUR", title="Sold Out", valid_type="SOLDOUT")]
 
-            # Primary: JSON-LD on the detail page
             flyer = None
             try:
-                detail = _session.get(url, timeout=15)
+                detail = await client.get(url)
                 detail.raise_for_status()
                 dsoup = BeautifulSoup(detail.text, "html.parser")
 
-                # Extract og:image as flyer
                 og_img = dsoup.find("meta", property="og:image")
                 if og_img and og_img.get("content"):  # type: ignore[union-attr]
                     flyer = str(og_img["content"])  # type: ignore[index]
 
-                # Get title and end time from JSON-LD
                 for script in dsoup.find_all("script", type="application/ld+json"):
                     try:
                         data = json.loads(script.string or "")
@@ -329,19 +341,16 @@ def scrape_openground(start_date: datetime, end_date: datetime) -> list[dict[str
                     except Exception:
                         continue
 
-                # Fallback: extract ticket price from detail page if homepage didn't have it
                 if not tickets:
                     detail_text = dsoup.get_text(" ", strip=True)
                     dp = re.search(r"(?:Admission|Tickets)\s+(\d+)\s*", detail_text)
                     if dp:
                         tickets = [_make_ticket(dp.group(1), "EUR")]
 
-                # Get floor-separated artists with SC URLs from HTML
                 artists = _openground_parse_detail_page(dsoup)
             except Exception as e:
                 logger.warning(f"Openground detail page failed ({url}): {e}")
 
-            # Fallback: parse from homepage anchor HTML
             if not artists:
                 logger.debug(f"Openground: no JSON-LD performers for {href}, trying anchor fallback")
                 artists = _openground_artists_from_anchor(anchor)
@@ -376,7 +385,7 @@ def scrape_openground(start_date: datetime, end_date: datetime) -> list[dict[str
 
 
 @register_club("Tbilisi")
-def scrape_khidi(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
+async def scrape_khidi(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
     """
     1. Fetch program page, find event links (khidi.ge/event/DDMMYY/).
     2. Extract date from URL slug.
@@ -384,13 +393,13 @@ def scrape_khidi(start_date: datetime, end_date: datetime) -> list[dict[str, Any
     """
     events = []
     try:
-        r = _session.get("https://khidi.ge/program/", timeout=15)
+        client = await _get_client()
+        r = await client.get("https://khidi.ge/program/")
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
 
-        # Collect unique event URLs from program page
-        seen = set()
-        event_links = []
+        seen: set[str] = set()
+        event_links: list[str] = []
         for a in soup.find_all("a", href=re.compile(r"khidi\.ge/event/\d+/")):
             href = a["href"]
             if href in seen:
@@ -401,7 +410,6 @@ def scrape_khidi(start_date: datetime, end_date: datetime) -> list[dict[str, Any
         logger.info(f"Khidi: found {len(event_links)} event links on homepage")
 
         for event_url in event_links:
-            # Date is encoded in the URL slug as DDMMYY
             m = re.search(r"/event/(\d{2})(\d{2})(\d{2})/?$", event_url)
             if not m:
                 continue
@@ -414,16 +422,14 @@ def scrape_khidi(start_date: datetime, end_date: datetime) -> list[dict[str, Any
             if not (start_date <= event_dt <= end_date + timedelta(days=1)):
                 continue
 
-            # Fetch detail page for lineup, ticket prices, and flyer
-            artists = []
-            tickets = []
+            artists: list[dict[str, Any]] = []
+            tickets: list[dict[str, Any]] = []
             flyer = None
             try:
-                detail = _session.get(event_url, timeout=15)
+                detail = await client.get(event_url)
                 detail.raise_for_status()
                 dsoup = BeautifulSoup(detail.text, "html.parser")
 
-                # Extract flyer from og:image
                 og_img = dsoup.find("meta", property="og:image")
                 if og_img and og_img.get("content"):  # type: ignore[union-attr]
                     flyer = str(og_img["content"])  # type: ignore[index]
@@ -435,7 +441,6 @@ def scrape_khidi(start_date: datetime, end_date: datetime) -> list[dict[str, Any
                         if artists:
                             break
 
-                # Extract pre-sale tiers: "I PRE-SALE: 40 GEL [SOLD OUT]"
                 page_text = dsoup.get_text(" ", strip=True)
                 for tier_match in re.finditer(
                     r"(I{1,4}V?\s+PRE-SALE)\s*:\s*(\d+)\s*GEL\s*(\[SOLD\s*OUT\])?",
@@ -487,15 +492,15 @@ _BASSIANI_HEADERS = {
 
 
 @register_club("Tbilisi")
-def scrape_bassiani(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
+async def scrape_bassiani(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
     """Fetch Bassiani events from their JSON API and parse room-separated lineups."""
     events = []
     try:
-        r = _session.get(
+        client = await _get_client()
+        r = await client.get(
             _BASSIANI_API,
             params={"app": "WebNight", "resource": "list", "page": "1"},
             headers={"Referer": "https://bassiani.com/nights"},
-            timeout=15,
         )
         r.raise_for_status()
         posts = r.json().get("data", {}).get("posts", [])
@@ -520,8 +525,7 @@ def scrape_bassiani(start_date: datetime, end_date: datetime) -> list[dict[str, 
             if img:
                 flyer = f"https://bassiani.com{img}"
 
-            # Parse room-separated lineup from the line_up JSON field
-            artists = []
+            artists: list[dict[str, Any]] = []
             raw_lineup = post.get("line_up") or ""
             if raw_lineup:
                 try:
@@ -542,12 +546,10 @@ def scrape_bassiani(start_date: datetime, end_date: datetime) -> list[dict[str, 
                 except (json.JSONDecodeError, TypeError, AttributeError) as e:
                     logger.warning(f"Bassiani lineup parse failed for id={post_id}: {e}")
 
-            # Fallback to sub_title if line_up is absent/empty
             if not artists and post.get("sub_title"):
                 artists = _parse_lineup("bassiani", post["sub_title"])
 
-            # Extract ticket price from API response
-            tickets = []
+            tickets: list[dict[str, Any]] = []
             raw_price = post.get("price")
             if raw_price and float(raw_price) > 0:
                 selling = post.get("selling", 0)
@@ -584,14 +586,15 @@ _BERGHAIN_BASE = "https://www.berghain.berlin"
 
 
 @register_club("Berlin")
-def scrape_berghain(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
+async def scrape_berghain(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
     """
     Fetch the Berghain program page and parse floor-separated lineups.
     Artist names from listing page; detail page for running order times.
     """
     events = []
     try:
-        r = _session.get(f"{_BERGHAIN_BASE}/en/program/", timeout=15)
+        client = await _get_client()
+        r = await client.get(f"{_BERGHAIN_BASE}/en/program/")
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
 
@@ -600,7 +603,6 @@ def scrape_berghain(start_date: datetime, end_date: datetime) -> list[dict[str, 
             if not href:
                 continue
 
-            # Extract date from listing: "21.03.2026" in span.font-bold
             date_span = anchor.select_one("p > span.font-bold")
             if not date_span:
                 continue
@@ -616,30 +618,30 @@ def scrape_berghain(start_date: datetime, end_date: datetime) -> list[dict[str, 
             if not (start_date <= event_dt <= end_date + timedelta(days=1)):
                 continue
 
-            # Title from h2
             h2 = anchor.select_one("h2")
             title = h2.get_text(strip=True) if h2 else "Berghain"
 
-            # Parse floor-separated artists from h3 (floor) + h4 (artists) pairs
-            artists = []
+            artists: list[dict[str, Any]] = []
             current_floor = None
             for child in anchor.find_all(["h3", "h4"]):
                 if child.name == "h3":
                     current_floor = child.get_text(strip=True)
                 elif child.name == "h4":
-                    for span in child.select("span.font-bold > span"):
-                        # Skip "Live" indicator spans
-                        if span.select_one("span.uppercase"):
-                            continue
-                        name = span.get_text(strip=True)
-                        # Clean up live suffix that may remain
-                        name = re.sub(r"\s*Live\s*$", "", name).strip()
+                    for outer in child.select(":scope > span.font-bold"):
+                        for s in outer.select("span.uppercase"):
+                            if re.match(r"^live$", s.get_text(strip=True), re.IGNORECASE):
+                                s.decompose()
+                        name = outer.get_text(" ", strip=True).strip(",").strip()
+                        name = re.sub(r"\s+", " ", name).strip()
                         if not name or len(name) < 2:
                             continue
-                        stub = _stub_artist("berghain", name)
-                        if current_floor:
-                            stub["floor"] = current_floor
-                        artists.append(stub)
+                        for part in re.split(r"\s+[Bb]2[Bb]\s+", name):
+                            part = part.strip()
+                            if part and len(part) > 1:
+                                stub = _stub_artist("berghain", part)
+                                if current_floor:
+                                    stub["floor"] = current_floor
+                                artists.append(stub)
 
             if not artists:
                 continue
@@ -675,7 +677,7 @@ _TRESOR_BASE = "https://tresorberlin.com"
 
 
 @register_club("Berlin")
-def scrape_tresor(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
+async def scrape_tresor(start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
     """
     1. Fetch events listing page, extract event links with dates from URL slugs.
     2. For each in-range event, fetch detail page for floor-separated lineup,
@@ -683,13 +685,13 @@ def scrape_tresor(start_date: datetime, end_date: datetime) -> list[dict[str, An
     """
     events = []
     try:
-        r = _session.get(f"{_TRESOR_BASE}/events", timeout=15)
+        client = await _get_client()
+        r = await client.get(f"{_TRESOR_BASE}/events")
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
 
-        # Collect event URLs — date is in the URL: /event/YYYYMMDD-slug/
-        seen = set()
-        event_links = []
+        seen: set[str] = set()
+        event_links: list[tuple[datetime, str, str, list[dict[str, Any]]]] = []
         for article in soup.select("article.event-item"):
             a = article.select_one("div.event-date a.plus-link")
             if not a:
@@ -710,12 +712,10 @@ def scrape_tresor(start_date: datetime, end_date: datetime) -> list[dict[str, An
             if not (start_date <= event_dt <= end_date + timedelta(days=1)):
                 continue
 
-            # Title from listing
             title_el = article.select_one("a.event-title span span")
             title = title_el.get_text(strip=True) if title_el else "Tresor"
 
-            # Lineup from listing page (fallback if detail page fails)
-            listing_artists = []
+            listing_artists: list[dict[str, Any]] = []
             for floor_div in article.select("div.event-floor[data-floor]"):
                 floor_name_el = floor_div.select_one("div.floor-name")
                 floor_name = floor_name_el.get_text(strip=True) if floor_name_el else None
@@ -744,18 +744,15 @@ def scrape_tresor(start_date: datetime, end_date: datetime) -> list[dict[str, An
             flyer: str | None = None
             tickets: list[dict[str, Any]] = []
 
-            # Fetch detail page for richer data
             try:
-                detail = _session.get(event_url, timeout=15)
+                detail = await client.get(event_url)
                 detail.raise_for_status()
                 dsoup = BeautifulSoup(detail.text, "html.parser")
 
-                # Flyer from hero image
                 hero_img = dsoup.select_one("aside.hero-outer picture img[src]")
                 if hero_img and hero_img.get("src"):
                     flyer = str(hero_img["src"])
 
-                # Floor-separated lineup with SC/RA links
                 for floor_div in dsoup.select("div.lineup > div.floor[data-floor]"):
                     floor_name_el = floor_div.select_one("div.floor-name")
                     floor_name = floor_name_el.get_text(strip=True) if floor_name_el else None
@@ -768,17 +765,14 @@ def scrape_tresor(start_date: datetime, end_date: datetime) -> list[dict[str, An
                         raw_name = re.sub(r"\s*\[?LIVE\]?\s*", "", raw_name, flags=re.IGNORECASE).strip()
                         if not raw_name or len(raw_name) < 2:
                             continue
-                        # Skip non-artist entries
                         if re.match(r"^all\s+night\s+long$", raw_name, re.IGNORECASE):
                             continue
 
-                        # Extract SC URL from artist link
                         link_href = str(item.get("href", ""))
                         sc_url = None
                         if "soundcloud.com" in link_href:
                             sc_url = link_href.replace("www.soundcloud.com", "soundcloud.com")
 
-                        # Split B2B artists
                         for part in re.split(r"\s+[Bb]2[Bb]\s+", raw_name):
                             part = part.strip()
                             if not part or len(part) < 2:
@@ -788,20 +782,17 @@ def scrape_tresor(start_date: datetime, end_date: datetime) -> list[dict[str, An
                                 stub["floor"] = floor_name
                             if sc_url:
                                 stub["soundcloud"] = sc_url
-                                sc_url = None  # only assign to first artist in B2B
+                                sc_url = None
                             artists.append(stub)
 
-                # Ticket link (usually RA link)
                 for a in dsoup.select("article.main-text a[href]"):
                     ticket_href = str(a.get("href", ""))
                     if "ra.co/events" in ticket_href:
-                        # We don't extract price from RA, just note it's ticketed
                         break
 
             except Exception as e:
                 logger.warning(f"Tresor detail page failed ({event_url}): {e}")
 
-            # Fall back to listing page lineup if detail page had no artists
             if not artists:
                 artists = listing_artists
 

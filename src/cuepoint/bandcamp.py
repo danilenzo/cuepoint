@@ -4,35 +4,34 @@ Bandcamp artist enrichment via page scraping.
 No official API — scrapes search results, /music page, and album pages.
 Extracts: tags/genres, supporter counts, latest release date.
 
-Rate-limited to ~1 req/sec to be respectful.
+Rate-limited to ~3 req/sec to be respectful.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
-import threading
 import time
 from datetime import datetime
 from typing import Any
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
 
 from . import config as cfg
-from .http_utils import retry_on_failure
+from .http_utils import async_retry_on_failure
 
 # ---------------------------------------------------------------------------
-# Session & rate limiter
+# Client & rate limiter
 # ---------------------------------------------------------------------------
 
-_session: requests.Session | None = None
-_session_lock = threading.Lock()
-_rate_semaphore = threading.Semaphore(3)  # max 3 concurrent requests
-_rate_lock = threading.Lock()
+_client: httpx.AsyncClient | None = None
+_rate_semaphore = asyncio.Semaphore(3)  # max 3 concurrent requests
+_rate_lock = asyncio.Lock()
 _last_request_time = 0.0
-_MIN_INTERVAL = 0.35  # ~3 req/sec global (respectful but not single-threaded)
+_MIN_INTERVAL = 0.35  # ~3 req/sec global
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
@@ -41,31 +40,39 @@ _HEADERS = {
 }
 
 
-def _get_session() -> requests.Session:
-    global _session
-    with _session_lock:
-        if _session is not None:
-            return _session
-        _session = requests.Session()
-        _session.headers.update(_HEADERS)
-        return _session
+async def _get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(
+            headers=_HEADERS,
+            timeout=15.0,
+            follow_redirects=True,
+        )
+    return _client
 
 
-@retry_on_failure(max_retries=2, base_delay=1.0)
-def _fetch(url: str, params: dict[str, str] | None = None) -> requests.Response:
+async def close_client() -> None:
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
+
+@async_retry_on_failure(max_retries=2, base_delay=1.0)
+async def _fetch(url: str, params: dict[str, str] | None = None) -> httpx.Response:
     """GET with rate limiting (~3 req/sec global, max 3 concurrent)."""
     global _last_request_time
 
-    with _rate_lock:
+    async with _rate_lock:
         now = time.time()
         elapsed = now - _last_request_time
         if elapsed < _MIN_INTERVAL:
-            time.sleep(_MIN_INTERVAL - elapsed)
+            await asyncio.sleep(_MIN_INTERVAL - elapsed)
         _last_request_time = time.time()
 
-    with _rate_semaphore:
-        session = _get_session()
-        r = session.get(url, params=params, timeout=15)
+    async with _rate_semaphore:
+        client = await _get_client()
+        r = await client.get(url, params=params)
         r.raise_for_status()
         return r
 
@@ -79,10 +86,10 @@ def _normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
-def search_bandcamp_url(name: str) -> str | None:
+async def search_bandcamp_url(name: str) -> str | None:
     """Search Bandcamp for an artist by name. Returns subdomain URL on match, else None."""
     try:
-        r = _fetch("https://bandcamp.com/search", params={"q": name, "item_type": "b"})
+        r = await _fetch("https://bandcamp.com/search", params={"q": name, "item_type": "b"})
         soup = BeautifulSoup(r.text, "html.parser")
         norm_name = _normalize(name)
 
@@ -91,16 +98,14 @@ def search_bandcamp_url(name: str) -> str | None:
             if not heading:
                 continue
             result_name = heading.get_text(strip=True)
-            # Check for close name match
             if _normalize(result_name) == norm_name:
-                # Get clean URL from itemurl div
                 itemurl = result.select_one("div.itemurl a")
                 if itemurl:
                     url = itemurl.get_text(strip=True).rstrip("/")
                     if not url.startswith("http"):
                         url = "https://" + url
                     return url
-    except (requests.RequestException, ValueError) as e:
+    except (httpx.HTTPError, ValueError) as e:
         logger.debug(f"Bandcamp search failed for '{name}': {e}")
     return None
 
@@ -110,10 +115,10 @@ def search_bandcamp_url(name: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _get_album_urls(artist_url: str) -> list[str]:
+async def _get_album_urls(artist_url: str) -> list[str]:
     """Fetch the /music page and return a list of album URLs."""
     try:
-        r = _fetch(f"{artist_url}/music")
+        r = await _fetch(f"{artist_url}/music")
         soup = BeautifulSoup(r.text, "html.parser")
 
         albums = []
@@ -124,7 +129,7 @@ def _get_album_urls(artist_url: str) -> list[str]:
                     href = artist_url.rstrip("/") + href
                 albums.append(href)
         return albums
-    except (requests.RequestException, ValueError) as e:
+    except (httpx.HTTPError, ValueError) as e:
         logger.debug(f"Bandcamp /music page failed for '{artist_url}': {e}")
         return []
 
@@ -134,18 +139,17 @@ def _get_album_urls(artist_url: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _parse_album(url: str) -> dict[str, Any]:
+async def _parse_album(url: str) -> dict[str, Any]:
     """
     Fetch an album page and extract data from JSON-LD.
     Returns dict with keys: tags, supporters, release_date (or empty dict on failure).
     """
     try:
-        r = _fetch(url)
+        r = await _fetch(url)
         soup = BeautifulSoup(r.text, "html.parser")
 
         result: dict[str, Any] = {"tags": [], "supporters": 0, "release_date": None}
 
-        # Try JSON-LD first (richest source)
         ld_script = soup.find("script", type="application/ld+json")
         if ld_script and ld_script.string:  # type: ignore[union-attr]
             try:
@@ -164,7 +168,6 @@ def _parse_album(url: str) -> dict[str, Any]:
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        # Fallback: tags from HTML elements
         if not result["tags"]:
             for tag_el in soup.select("a.tag"):
                 tag = tag_el.get_text(strip=True)
@@ -172,7 +175,7 @@ def _parse_album(url: str) -> dict[str, Any]:
                     result["tags"].append(tag)
 
         return result
-    except (requests.RequestException, ValueError) as e:
+    except (httpx.HTTPError, ValueError) as e:
         logger.debug(f"Bandcamp album page failed ({url}): {e}")
         return {}
 
@@ -182,7 +185,7 @@ def _parse_album(url: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def populate_bandcamp_info(artist_info: dict[str, Any]) -> dict[str, Any]:
+async def populate_bandcamp_info(artist_info: dict[str, Any]) -> dict[str, Any]:
     """
     Enrich artist_info with Bandcamp data.
 
@@ -191,32 +194,29 @@ def populate_bandcamp_info(artist_info: dict[str, Any]) -> dict[str, Any]:
     """
     bc_url = artist_info.get("bandcamp")
 
-    # If no Bandcamp URL, try searching by name
     if not bc_url:
         name = artist_info.get("name")
         if not name:
             return artist_info
-        bc_url = search_bandcamp_url(name)
+        bc_url = await search_bandcamp_url(name)
         if bc_url:
             artist_info["bandcamp"] = bc_url
         else:
             return artist_info
 
     try:
-        # Get album URLs
-        album_urls = _get_album_urls(bc_url)
+        album_urls = await _get_album_urls(bc_url)
         if not album_urls:
             logger.trace(f"Bandcamp: no albums found for '{bc_url}'")
             return artist_info
 
-        # Fetch top N albums (most recent are first in grid)
         max_albums = cfg.bandcamp_max_albums()
-        all_tags = []
+        all_tags: list[str] = []
         total_supporters = 0
         latest_release = None
 
         for album_url in album_urls[:max_albums]:
-            data = _parse_album(album_url)
+            data = await _parse_album(album_url)
             if not data:
                 continue
             all_tags.extend(data.get("tags", []))
@@ -225,9 +225,8 @@ def populate_bandcamp_info(artist_info: dict[str, Any]) -> dict[str, Any]:
             if rd and (latest_release is None or rd > latest_release):
                 latest_release = rd
 
-        # Deduplicate tags, preserve order
-        seen = set()
-        unique_tags = []
+        seen: set[str] = set()
+        unique_tags: list[str] = []
         for t in all_tags:
             tl = t.lower()
             if tl not in seen:
@@ -239,7 +238,7 @@ def populate_bandcamp_info(artist_info: dict[str, Any]) -> dict[str, Any]:
         if latest_release:
             artist_info["bc_latest_release"] = latest_release
 
-    except (requests.RequestException, ValueError) as e:
+    except (httpx.HTTPError, ValueError) as e:
         logger.warning(f"Bandcamp enrichment failed for '{artist_info.get('name')}': {e}")
 
     return artist_info

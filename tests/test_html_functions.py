@@ -4,7 +4,7 @@ import json
 
 import pandas as pd
 
-from techno_scan.html_creator import (
+from cuepoint.html_creator import (
     _normalize_genre,
     df_to_genre,
     df_to_strength,

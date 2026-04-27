@@ -1,5 +1,5 @@
 """
-Unified SQLite storage for techno_scan.
+Unified SQLite storage for cuepoint.
 
 Replaces:
   - cache/_artist_urls.json   → artist_urls table
@@ -20,7 +20,7 @@ from loguru import logger
 
 from .generic import BASE_PATH
 
-DB_PATH = BASE_PATH / "cache/techno_scan.db"
+DB_PATH = BASE_PATH / "cache/cuepoint.db"
 
 _local = threading.local()
 
@@ -35,6 +35,13 @@ def _get_conn() -> sqlite3.Connection:
         conn.row_factory = sqlite3.Row
         _local.conn = conn
     return _local.conn  # type: ignore[no-any-return]
+
+
+def close_db() -> None:
+    """Close the current thread's connection (if any)."""
+    if hasattr(_local, "conn") and _local.conn is not None:
+        _local.conn.close()
+        _local.conn = None
 
 
 def init_db() -> None:

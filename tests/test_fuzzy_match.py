@@ -2,7 +2,7 @@
 
 import json
 
-from techno_scan.fuzzy_match import (
+from cuepoint.fuzzy_match import (
     _find_ra_match,
     _levenshtein,
     _merge_ra_into_stub,

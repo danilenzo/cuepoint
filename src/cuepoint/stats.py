@@ -1,5 +1,5 @@
 """
-Pipeline statistics and error tracking for techno_scan.
+Pipeline statistics and error tracking for cuepoint.
 
 ScanStats collects metrics during the fetch → enrich → filter → render pipeline
 and renders a summary footer for the HTML report.

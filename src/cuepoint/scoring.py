@@ -1,5 +1,5 @@
 """
-Scoring, filtering, and recording logic for techno_scan events.
+Scoring, filtering, and recording logic for cuepoint events.
 
 Extracted from event_fetcher.py for maintainability.
 """

@@ -13,7 +13,7 @@ format:
 	ruff format src/ tests/
 
 run:
-	uvicorn techno_scan.api:app --reload --port 8000
+	uvicorn cuepoint.api:app --reload --port 8000
 
 docker-up:
 	docker compose up --build -d
