@@ -244,7 +244,11 @@ def parse_events_list(events_list: list[dict[str, Any]]) -> pd.DataFrame:
     return df
 
 
-async def get_data(ctx: ScanContext, progress_cb: Callable[[dict[str, Any]], None] | None = None) -> pd.DataFrame:
+async def get_data(
+    ctx: ScanContext,
+    progress_cb: Callable[[dict[str, Any]], None] | None = None,
+    stats: ScanStats | None = None,
+) -> pd.DataFrame:
     def _cb(phase: str, detail: str, pct: float) -> None:
         if progress_cb:
             progress_cb({"phase": phase, "detail": detail, "pct": pct})
@@ -331,7 +335,7 @@ async def get_data(ctx: ScanContext, progress_cb: Callable[[dict[str, Any]], Non
     _cb("enrich", f"Enriching {len(unique_artist_ids)} artists...", 0.10)
 
     artist_lookup = await enrich_batch_phased(
-        unique_artist_ids, get_artist_urls, progress_cb=progress_cb, pct_base=0.10, pct_range=0.55
+        unique_artist_ids, get_artist_urls, progress_cb=progress_cb, pct_base=0.10, pct_range=0.55, stats=stats
     )
 
     # Load cached artists that were skipped by incremental mode
@@ -351,7 +355,7 @@ async def get_data(ctx: ScanContext, progress_cb: Callable[[dict[str, Any]], Non
         logger.info(f"Re-enriching {len(stale_ids)} stale artists (cache > {CACHE_STALE_DAYS}d)...")
         for aid in stale_ids:
             store.delete_cached_artist(str(aid))
-        refreshed = await enrich_batch_phased(stale_ids, get_artist_urls)
+        refreshed = await enrich_batch_phased(stale_ids, get_artist_urls, stats=stats)
         artist_lookup.update(refreshed)
 
     _compute_similarity(artist_lookup)
@@ -388,7 +392,7 @@ async def get_data(ctx: ScanContext, progress_cb: Callable[[dict[str, Any]], Non
                     unique_stubs.append(a)
 
         logger.info(f"Enriching {len(unique_stubs)} club artists (phased pipeline)...")
-        stub_lookup = await enrich_club_batch_phased(unique_stubs)
+        stub_lookup = await enrich_club_batch_phased(unique_stubs, stats=stats)
 
         for ev in club_events:
             ev["_prefilled_artists_info"] = [
@@ -510,7 +514,7 @@ async def run_for_city(
 
     try:
         _cb("fetch_ra", "Fetching RA events...", 0.05)
-        df = await get_data(ctx, progress_cb=progress_cb)
+        df = await get_data(ctx, progress_cb=progress_cb, stats=stats)
 
         stats.ra_events_fetched = len(df)
 

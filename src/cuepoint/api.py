@@ -225,7 +225,7 @@ async def _run_scan(scan_id: str, req: ScanRequest) -> None:
         start_date = datetime.now()
         raw_results = []
 
-        from .event_fetcher import ScanContext, get_data
+        from .event_fetcher import ScanContext, _record_enrichment_health, get_data
         from .generic import OUTPUT_PATH
         from .html_creator import create_html
         from .scoring import filter_df, sort_df
@@ -249,7 +249,7 @@ async def _run_scan(scan_id: str, req: ScanRequest) -> None:
             stats.start()
 
             try:
-                df = await get_data(ctx)
+                df = await get_data(ctx, stats=stats)
                 stats.ra_events_fetched = len(df)
 
                 if not df.empty:
@@ -263,6 +263,7 @@ async def _run_scan(scan_id: str, req: ScanRequest) -> None:
                     store.save_api_results(city_name.lower(), events_json)
 
                     stats.finish()
+                    _record_enrichment_health(stats)
                     html_res = create_html(
                         sorted_df,
                         stats_html=stats.to_html_footer(),
@@ -285,6 +286,7 @@ async def _run_scan(scan_id: str, req: ScanRequest) -> None:
                     )
                 else:
                     stats.finish()
+                    _record_enrichment_health(stats)
                     store.save_api_results(city_name.lower(), [])
                     raw_results.append({"city": city_name, "events": 0, "followed": 0, "file_path": None})
 

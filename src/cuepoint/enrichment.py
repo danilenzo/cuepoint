@@ -21,6 +21,7 @@ from .discogs import populate_discogs_info
 from .discovery import check_rising
 from .following import is_following
 from .sc import is_oauth, populate_sc_info, reset_circuit_breaker, search_sc_by_name
+from .stats import ScanStats
 
 # ---------------------------------------------------------------------------
 # Cache helpers
@@ -71,6 +72,7 @@ async def _run_enrichment_phases(
     to_enrich: list[tuple[str, dict[str, Any]]],
     progress_cb: Callable[[str, str, float], None] | None = None,
     label: str = "",
+    stats: ScanStats | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Run the SC → Discogs → Bandcamp → rising → save pipeline on a list of (aid, info) pairs.
 
@@ -98,8 +100,12 @@ async def _run_enrichment_phases(
         async with sc_sem:
             try:
                 info = await populate_sc_info(info)
+                if stats:
+                    stats.increment(sc_ok=1)
             except Exception as e:
                 logger.warning(f"SC failed for '{info.get('name')}': {e}")
+                if stats:
+                    stats.increment(sc_fail=1)
         sc_done += 1
         _cb("enrich_sc", f"SoundCloud: {sc_done}/{total}", sc_done / total * 0.25)
         return aid, info
@@ -120,8 +126,12 @@ async def _run_enrichment_phases(
         async with dc_sem:
             try:
                 info = await populate_discogs_info(info)
+                if stats:
+                    stats.increment(dc_ok=1)
             except Exception as e:
                 logger.warning(f"Discogs failed for '{info.get('name')}': {e}")
+                if stats:
+                    stats.increment(dc_fail=1)
         dc_done += 1
         if dc_done % 10 == 0 or dc_done == dc_total:
             logger.info(f"  Discogs {label}progress: {dc_done}/{dc_total}")
@@ -144,8 +154,12 @@ async def _run_enrichment_phases(
         async with bc_sem:
             try:
                 info = await populate_bandcamp_info(info)
+                if stats:
+                    stats.increment(bc_ok=1)
             except Exception as e:
                 logger.warning(f"Bandcamp failed for '{info.get('name')}': {e}")
+                if stats:
+                    stats.increment(bc_fail=1)
         bc_done += 1
         if bc_done % 10 == 0 or bc_done == bc_total:
             logger.info(f"  Bandcamp {label}progress: {bc_done}/{bc_total}")
@@ -227,6 +241,7 @@ async def enrich_batch_phased(
     progress_cb: Callable[[dict[str, Any]], None] | None = None,
     pct_base: float = 0.1,
     pct_range: float = 0.6,
+    stats: ScanStats | None = None,
 ) -> dict[str | int, dict[str, Any]]:
     """Enrich a batch of artist IDs using async concurrency.
 
@@ -278,7 +293,7 @@ async def enrich_batch_phased(
         if progress_cb:
             progress_cb({"phase": phase, "detail": detail, "pct": pct_base + frac * pct_range})
 
-    enriched = await _run_enrichment_phases(to_enrich, progress_cb=_wrapped_cb)
+    enriched = await _run_enrichment_phases(to_enrich, progress_cb=_wrapped_cb, stats=stats)
     results.update(enriched)
     return results
 
@@ -321,7 +336,9 @@ async def get_club_artist_info(
     return enriched
 
 
-async def enrich_club_batch_phased(stubs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+async def enrich_club_batch_phased(
+    stubs: list[dict[str, Any]], stats: ScanStats | None = None
+) -> dict[str, dict[str, Any]]:
     """Phased enrichment for club artist stubs (SC name search + 3-source pipeline)."""
     results: dict[str, dict[str, Any]] = {}
     to_enrich: list[tuple[str, dict[str, Any]]] = []
@@ -351,6 +368,6 @@ async def enrich_club_batch_phased(stubs: list[dict[str, Any]]) -> dict[str, dic
     to_enrich = list(await asyncio.gather(*[_sc_resolve(item) for item in to_enrich]))
 
     # Phases 2-5: shared SC → Discogs → Bandcamp → rising → save pipeline
-    enriched = await _run_enrichment_phases(to_enrich, label="club ")
+    enriched = await _run_enrichment_phases(to_enrich, label="club ", stats=stats)
     results.update(enriched)
     return results
