@@ -87,6 +87,16 @@ def init_db() -> None:
             scanned_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS scraper_health (
+            source       TEXT NOT NULL,
+            city         TEXT NOT NULL DEFAULT '',
+            status       TEXT NOT NULL,
+            events_found INTEGER NOT NULL DEFAULT 0,
+            error_msg    TEXT NOT NULL DEFAULT '',
+            recorded_at  TEXT NOT NULL,
+            PRIMARY KEY (source, city)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_artist_cache_cached_at ON artist_cache(cached_at);
         CREATE INDEX IF NOT EXISTS idx_scan_events_city ON scan_events(city);
         CREATE INDEX IF NOT EXISTS idx_api_results_city ON api_results(city);
@@ -369,6 +379,45 @@ def get_api_results(city: str) -> list[dict[str, Any]] | None:
         results: list[dict[str, Any]] = json.loads(row["data"])
         return results
     return None
+
+
+# ---------------------------------------------------------------------------
+# Scraper health tracking
+# ---------------------------------------------------------------------------
+
+
+def record_scraper_health(
+    source: str,
+    *,
+    city: str = "",
+    status: str = "ok",
+    events_found: int = 0,
+    error_msg: str = "",
+) -> None:
+    conn = _get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO scraper_health (source, city, status, events_found, error_msg, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (source, city, status, events_found, error_msg, datetime.now().isoformat()),
+    )
+    conn.commit()
+
+
+def get_all_scraper_health() -> list[dict[str, Any]]:
+    conn = _get_conn()
+    rows = conn.execute(
+        "SELECT source, city, status, events_found, error_msg, recorded_at FROM scraper_health ORDER BY recorded_at DESC"
+    ).fetchall()
+    return [
+        {
+            "source": row["source"],
+            "city": row["city"],
+            "status": row["status"],
+            "events_found": row["events_found"],
+            "error_msg": row["error_msg"],
+            "recorded_at": row["recorded_at"],
+        }
+        for row in rows
+    ]
 
 
 # ---------------------------------------------------------------------------

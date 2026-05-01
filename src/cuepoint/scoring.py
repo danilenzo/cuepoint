@@ -150,6 +150,77 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
 
         return title_rating
 
+    def breakdown_row(row: Any) -> dict[str, float]:
+        breakdown: dict[str, float] = {}
+
+        def collect_breakdown(artist_info: dict[str, Any] | None, divisor: int = 1) -> None:
+            if artist_info is None:
+                return
+            genre_hits = count_genre_matches(artist_info, _genre_set)
+
+            if "sc_followers" in artist_info and artist_info["sc_followers"] is not None:
+                val = int(artist_info["sc_followers"]) * genre_hits / cfg.sc_weight() / divisor
+                if val:
+                    breakdown["sc_followers"] = breakdown.get("sc_followers", 0) + val
+
+            if is_following(artist_info.get("soundcloud")):
+                val = cfg.followed_bonus()
+                breakdown["followed"] = breakdown.get("followed", 0) + val
+
+            if "dc_have" in artist_info and artist_info["dc_have"] is not None:
+                val = int(artist_info["dc_have"]) * genre_hits / cfg.dc_weight() / divisor
+                if val:
+                    breakdown["dc_have"] = breakdown.get("dc_have", 0) + val
+
+            if artist_info.get("bc_supporters"):
+                val = int(artist_info["bc_supporters"]) * genre_hits / cfg.bc_weight() / divisor
+                if val:
+                    breakdown["bc_supporters"] = breakdown.get("bc_supporters", 0) + val
+
+            if artist_info.get("_rising"):
+                val = cfg.rising_bonus() / divisor
+                breakdown["rising"] = breakdown.get("rising", 0) + val
+
+            sim_score = artist_info.get("_similarity_score", 0)
+            if sim_score:
+                val = sim_score * cfg.similarity_weight() / divisor
+                breakdown["similarity"] = breakdown.get("similarity", 0) + val
+
+            shared = artist_info.get("_shared_labels")
+            if shared:
+                val = len(shared) * cfg.shared_label_bonus() / divisor
+                breakdown["shared_labels"] = breakdown.get("shared_labels", 0) + val
+
+            dc_ratio = artist_info.get("dc_ratio", 0)
+            if dc_ratio:
+                val = dc_ratio * cfg.dc_ratio_weight() / divisor
+                breakdown["dc_ratio"] = breakdown.get("dc_ratio", 0) + val
+
+            bc_release = artist_info.get("bc_latest_release")
+            if bc_release:
+                try:
+                    release_dt = datetime.strptime(bc_release, "%Y-%m-%d")
+                    age_days = (datetime.now() - release_dt).days
+                    if 0 <= age_days <= 365:
+                        recency_factor = 1.0 - (age_days / 365.0)
+                        val = cfg.recency_bonus() * recency_factor / divisor
+                        breakdown["recency"] = breakdown.get("recency", 0) + val
+                except (ValueError, TypeError):
+                    pass
+
+        for artist_info in row["artists_info"]:
+            collect_breakdown(artist_info)
+
+        for artist_info in row["artists_list_info_past"]:
+            collect_breakdown(artist_info, 5)
+
+        ra_genres = [g["name"] for g in row["genres"] if isinstance(g, dict)]
+        ra_genre_val = count_techno_in_list(ra_genres) * cfg.ra_genre_bonus()
+        if ra_genre_val:
+            breakdown["ra_genre"] = ra_genre_val
+
+        return breakdown
+
     def density_row(row: Any) -> tuple[int, int]:
         artists = row["artists_info"]
         total = len([a for a in artists if a is not None])
@@ -157,6 +228,7 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
         return (notable, total)
 
     df["_score"] = df.apply(score_row, axis=1)
+    df["_score_breakdown"] = df.apply(breakdown_row, axis=1)
     density = df.apply(density_row, axis=1)
     df["_lineup_notable"] = density.apply(lambda x: x[0])
     df["_lineup_total"] = density.apply(lambda x: x[1])

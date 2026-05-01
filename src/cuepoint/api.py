@@ -263,7 +263,11 @@ async def _run_scan(scan_id: str, req: ScanRequest) -> None:
                     store.save_api_results(city_name.lower(), events_json)
 
                     stats.finish()
-                    html_res = create_html(sorted_df, stats_html=stats.to_html_footer())
+                    html_res = create_html(
+                        sorted_df,
+                        stats_html=stats.to_html_footer(),
+                        scraper_health=store.get_all_scraper_health(),
+                    )
                     file_path = (
                         OUTPUT_PATH + city_name + " " + start_date.strftime("%Y-%m-%d") + " " + str(req.days) + ".html"
                     )

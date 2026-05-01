@@ -39,6 +39,9 @@ gui = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+cuepoint = ["vendor/*.js", "templates/*.html"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
@@ -110,4 +113,4 @@ omit = ["src/cuepoint/gui.py"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 55
+fail_under = 60

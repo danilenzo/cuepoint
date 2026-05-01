@@ -467,6 +467,23 @@ async def get_data(ctx: ScanContext, progress_cb: Callable[[dict[str, Any]], Non
     return df
 
 
+def _record_enrichment_health(stats: ScanStats) -> None:
+    """Bridge ScanStats counters into scraper_health table."""
+    city = stats.city
+    for source, ok, fail in [
+        ("soundcloud", stats.sc_ok, stats.sc_fail),
+        ("discogs", stats.dc_ok, stats.dc_fail),
+        ("bandcamp", stats.bc_ok, stats.bc_fail),
+    ]:
+        total = ok + fail
+        if total:
+            status = "ok" if fail == 0 else ("degraded" if ok > 0 else "error")
+            store.record_scraper_health(
+                source, city=city, status=status, events_found=ok, error_msg=f"{fail} failures" if fail else ""
+            )
+    store.record_scraper_health("ra", city=city, status="ok", events_found=stats.ra_events_fetched)
+
+
 async def run_for_city(
     city_key: str, start_date: datetime, days_ahead: int, progress_cb: Callable[[dict[str, Any]], None] | None = None
 ) -> dict[str, Any]:
@@ -505,7 +522,10 @@ async def run_for_city(
 
         _cb("report", "Generating HTML report...", 0.92)
         stats.finish()
-        html_res = create_html(sorted_data, stats_html=stats.to_html_footer())
+        _record_enrichment_health(stats)
+        html_res = create_html(
+            sorted_data, stats_html=stats.to_html_footer(), scraper_health=store.get_all_scraper_health()
+        )
 
         file_path = (
             OUTPUT_PATH

@@ -23,6 +23,8 @@ import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
 
+from . import db as store
+
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"}
 
 _client: httpx.AsyncClient | None = None
@@ -97,9 +99,22 @@ async def scrape_city_clubs(city: str, start_date: datetime, end_date: datetime)
     all_events: list[dict[str, Any]] = []
     for scraper in scrapers:
         try:
-            all_events.extend(await scraper(start_date, end_date))
+            events = await scraper(start_date, end_date)
+            all_events.extend(events)
+            store.record_scraper_health(
+                scraper.__name__,
+                city=city,
+                status="ok",
+                events_found=len(events),
+            )
         except Exception as e:
             logger.warning(f"{scraper.__name__} failed: {e}")
+            store.record_scraper_health(
+                scraper.__name__,
+                city=city,
+                status="error",
+                error_msg=str(e)[:200],
+            )
     return all_events
 
 
