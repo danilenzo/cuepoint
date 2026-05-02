@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 
-from cuepoint.bandcamp import _get_album_urls, _normalize, _parse_album, populate_bandcamp_info, search_bandcamp_url
+from cuepoint.bandcamp import _get_album_urls, _parse_album, populate_bandcamp_info, search_bandcamp_url
+from cuepoint.fuzzy_match import _normalize_alnum
 
 _run = asyncio.run
 
@@ -19,7 +20,7 @@ _run = asyncio.run
 
 class TestNormalize:
     def test_strips_non_alphanumeric(self):
-        assert _normalize("Test Artist!") == "testartist"
+        assert _normalize_alnum("Test Artist!") == "testartist"
 
 
 # ---------------------------------------------------------------------------

@@ -583,12 +583,10 @@ def create_html(df: Any, stats_html: str = "", scraper_health: list[dict[str, An
     Args:
         df: event DataFrame to render.
         stats_html: optional HTML string for the pipeline stats footer.
-        scraper_health: optional list of scraper health dicts for the freshness panel.
+        scraper_health: kept for API compatibility but no longer rendered in reports.
     """
     events_json = json.dumps(_df_to_json(df), ensure_ascii=True, default=str)
-    health_json = json.dumps(scraper_health or [], ensure_ascii=True, default=str)
 
-    # Read Vue runtime
     try:
         vue_js = _VUE_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -600,7 +598,6 @@ def create_html(df: Any, stats_html: str = "", scraper_health: list[dict[str, An
     return (
         template.replace("/* __VUE_RUNTIME__ */", vue_js)
         .replace('"__EVENTS_DATA__"', events_json)
-        .replace('"__HEALTH_DATA__"', health_json)
         .replace("<!-- __STATIC_FALLBACK__ -->", static_table)
         .replace("<!-- __STATS_FOOTER__ -->", stats_html)
     )

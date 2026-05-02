@@ -45,6 +45,15 @@ def close_db() -> None:
         _local.conn = None
 
 
+def check_db() -> bool:
+    """Return True if the database is reachable."""
+    try:
+        _get_conn().execute("SELECT 1").fetchone()
+        return True
+    except Exception:
+        return False
+
+
 def init_db() -> None:
     """Create tables if they don't exist."""
     conn = _get_conn()

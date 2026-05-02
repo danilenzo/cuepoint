@@ -429,26 +429,6 @@
     }
     .score-breakdown .sb-bar-fill.followed { background: var(--green); }
     .score-breakdown .sb-bar-fill.rising { background: var(--red); }
-    /* health panel */
-    .health-panel {
-        display: flex; flex-wrap: wrap; gap: 8px;
-        padding: 10px clamp(8px, 2vw, 24px);
-        font-size: 12px;
-    }
-    .health-chip {
-        display: inline-flex; align-items: center; gap: 6px;
-        background: var(--bg-card); border: 1px solid var(--border);
-        border-radius: var(--radius-sm); padding: 6px 12px;
-        font-size: 11px; color: var(--text-secondary);
-    }
-    .health-dot {
-        width: 8px; height: 8px; border-radius: 50%;
-        flex-shrink: 0;
-    }
-    .health-dot.ok { background: var(--green); }
-    .health-dot.degraded { background: var(--orange); }
-    .health-dot.error { background: var(--red); }
-    .health-chip .health-time { color: var(--text-muted); font-size: 10px; }
     /* scrollbar */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: var(--bg-primary); }
@@ -577,16 +557,6 @@
             Export .ics
         </button>
         <span class="count">{{ visibleCount === totalCount ? totalCount + ' events' : visibleCount + ' / ' + totalCount + ' events' }}</span>
-    </div>
-
-    <!-- Scraper health -->
-    <div class="health-panel" v-if="healthData.length">
-        <div class="health-chip" v-for="h in healthData" :key="h.source + h.city" :title="h.error_msg || ''">
-            <span class="health-dot" :class="h.status"></span>
-            <span>{{ h.source }}{{ h.city ? ' (' + h.city + ')' : '' }}</span>
-            <span v-if="h.events_found" class="stat-val">{{ h.events_found }}</span>
-            <span class="health-time">{{ timeAgo(h.recorded_at) }}</span>
-        </div>
     </div>
 
     <!-- Table view -->
@@ -821,8 +791,6 @@ const eventsData = reactive("__EVENTS_DATA__".map(ev => {
     ev.scoreExpanded = false;
     return ev;
 }));
-const healthData = reactive("__HEALTH_DATA__");
-
 createApp({
     setup() {
         const searchQuery = ref('');
@@ -954,16 +922,6 @@ createApp({
             }).join('');
         }
 
-        function timeAgo(iso) {
-            if (!iso) return '';
-            const diff = Date.now() - new Date(iso).getTime();
-            const mins = Math.floor(diff / 60000);
-            if (mins < 1) return 'just now';
-            if (mins < 60) return mins + 'm ago';
-            const hrs = Math.floor(mins / 60);
-            if (hrs < 24) return hrs + 'h ago';
-            return Math.floor(hrs / 24) + 'd ago';
-        }
 
         // ICS helpers
         function icsEscape(s) {
@@ -1038,9 +996,8 @@ createApp({
             searchQuery, followedOnly, sortColumn, sortAsc, viewMode,
             genreDropdownOpen, selectedGenres, genreDropdown,
             columns, allGenres, filteredEvents, visibleCount, totalCount,
-            healthData,
             sortBy, toggleView, formatDate, formatTimeRange, fmtNum, formatTickets, cleanTicketTitle,
-            timeAgo, downloadSingleICS, exportICS,
+            downloadSingleICS, exportICS,
         };
     }
 }).mount('#app');

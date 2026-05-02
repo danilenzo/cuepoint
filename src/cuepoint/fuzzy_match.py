@@ -10,10 +10,15 @@ import re
 from typing import Any
 
 
+def _normalize_alnum(s: str) -> str:
+    """Lowercase and keep only alphanumeric characters."""
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
 def _norm_artist_name(name: str | None) -> str:
     """Normalize artist name: strip parentheticals like '(2)', lowercase, keep only alnum."""
     s = re.sub(r"\s*\(\d+\)\s*$", "", (name or ""))  # "Shed (2)" -> "Shed"
-    return re.sub(r"[^a-z0-9]", "", s.lower())
+    return _normalize_alnum(s)
 
 
 def _levenshtein(s1: str, s2: str) -> int:

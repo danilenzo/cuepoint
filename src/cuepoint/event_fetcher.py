@@ -5,7 +5,6 @@ import asyncio
 import dataclasses
 import hashlib
 import json
-import re
 import traceback
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -34,7 +33,7 @@ from .enrichment import (
     is_cache_stale,
 )
 from .flyers import embed_flyers, get_flyer
-from .fuzzy_match import _merge_ra_into_stub, _norm_artist_name
+from .fuzzy_match import _merge_ra_into_stub, _norm_artist_name, _normalize_alnum
 from .generic import OUTPUT_PATH, RA, URL
 from .html_creator import create_html
 from .http_utils import async_retry_on_failure
@@ -426,23 +425,20 @@ async def get_data(
             ra_venue = str(ra_row["venue_name"]).lower()
             return any(cn in ra_venue for cn in club_names)
 
-        def _normalize(s: Any) -> str:
-            return re.sub(r"[^a-z0-9]", "", str(s).lower())
-
         for _idx, ra_row in df.iterrows():
             if not _is_club_duplicate(ra_row):
                 continue
             ra_date = pd.Timestamp(ra_row["event_date"]).date()
             ra_flyer = ra_row.get("flyer")
             ra_attending = ra_row.get("attending", 0)
-            ra_title = _normalize(ra_row.get("title", ""))
+            ra_title = _normalize_alnum(str(ra_row.get("title", "")))
 
             best_ci = None
             for ci in club_df.index:
                 c_date = pd.Timestamp(club_df.at[ci, "event_date"]).date()
                 if c_date != ra_date:
                     continue
-                c_title = _normalize(club_df.at[ci, "title"])
+                c_title = _normalize_alnum(str(club_df.at[ci, "title"]))
                 if ra_title and c_title and (ra_title in c_title or c_title in ra_title):
                     best_ci = ci
                     break

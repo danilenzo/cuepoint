@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 from typing import Any
 
@@ -60,17 +62,26 @@ def is_following(sc_url: str | None) -> bool:
 
 
 def record(artist: dict[str, Any], event: Any, city: str) -> None:
-    date = event.event_date.strftime("%Y-%m-%d")
-    event_id = event["event_url"].replace("https://ra.co/events/", "")
-    venue = event["venue_name"]
-    promoters = event["promoters"]
-    artist_name = artist["name"]
+    try:
+        event_date = event.get("event_date") or event.event_date
+        date = event_date.strftime("%Y-%m-%d") if hasattr(event_date, "strftime") else str(event_date)[:10]
+    except Exception:
+        date = "unknown"
+    event_url = str(event.get("event_url", "") or "")
+    event_id = event_url.replace("https://ra.co/events/", "") or "unknown"
+    venue = str(event.get("venue_name", "") or "unknown")
+    promoters = event.get("promoters") or []
+    artist_name = str(artist.get("name", "unknown"))
+
+    def _safe_join(*parts: str) -> str:
+        return ",".join(p.replace(",", ";") for p in parts)
 
     if len(promoters) == 0:
-        store.record_found(",".join([city, date, event_id, venue, "Empty", artist_name]))
+        store.record_found(_safe_join(city, date, event_id, venue, "Empty", artist_name))
 
     for promoter in promoters:
-        store.record_found(",".join([city, date, event_id, venue, promoter["name"], artist_name]))
+        promo_name = promoter["name"] if isinstance(promoter, dict) else str(promoter)
+        store.record_found(_safe_join(city, date, event_id, venue, promo_name, artist_name))
 
 
 def load_found() -> pd.DataFrame:

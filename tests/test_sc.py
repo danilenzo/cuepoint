@@ -6,7 +6,8 @@ import asyncio
 import json
 from unittest.mock import MagicMock, patch
 
-from cuepoint.sc import _is_valid_sc_url, _normalize, populate_sc_info, search_sc_by_name
+from cuepoint.fuzzy_match import _normalize_alnum
+from cuepoint.sc import _is_valid_sc_url, populate_sc_info, search_sc_by_name
 
 _run = asyncio.run
 
@@ -17,13 +18,13 @@ _run = asyncio.run
 
 class TestNormalize:
     def test_strips_non_alphanumeric(self):
-        assert _normalize("DJ Test-Name") == "djtestname"
+        assert _normalize_alnum("DJ Test-Name") == "djtestname"
 
     def test_lowercases(self):
-        assert _normalize("TECHNO") == "techno"
+        assert _normalize_alnum("TECHNO") == "techno"
 
     def test_empty(self):
-        assert _normalize("") == ""
+        assert _normalize_alnum("") == ""
 
 
 class TestIsValidScUrl:

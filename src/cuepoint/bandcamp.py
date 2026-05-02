@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import time
 from datetime import datetime
 from typing import Any
@@ -21,6 +20,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 
 from . import config as cfg
+from .fuzzy_match import _normalize_alnum
 from .http_utils import async_retry_on_failure
 
 # ---------------------------------------------------------------------------
@@ -64,11 +64,11 @@ async def _fetch(url: str, params: dict[str, str] | None = None) -> httpx.Respon
     global _last_request_time
 
     async with _rate_lock:
-        now = time.time()
+        now = time.monotonic()
         elapsed = now - _last_request_time
         if elapsed < _MIN_INTERVAL:
             await asyncio.sleep(_MIN_INTERVAL - elapsed)
-        _last_request_time = time.time()
+        _last_request_time = time.monotonic()
 
     async with _rate_semaphore:
         client = await _get_client()
@@ -82,8 +82,16 @@ async def _fetch(url: str, params: dict[str, str] | None = None) -> httpx.Respon
 # ---------------------------------------------------------------------------
 
 
-def _normalize(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", s.lower())
+def _normalize_bc_url(url: str) -> str:
+    """Ensure a bandcamp value from RA is a full absolute URL."""
+    url = url.strip().rstrip("/")
+    if not url:
+        return ""
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    if ".bandcamp.com" in url:
+        return "https://" + url
+    return f"https://{url}.bandcamp.com"
 
 
 async def search_bandcamp_url(name: str) -> str | None:
@@ -91,14 +99,14 @@ async def search_bandcamp_url(name: str) -> str | None:
     try:
         r = await _fetch("https://bandcamp.com/search", params={"q": name, "item_type": "b"})
         soup = BeautifulSoup(r.text, "html.parser")
-        norm_name = _normalize(name)
+        norm_name = _normalize_alnum(name)
 
         for result in soup.select("li.searchresult"):
             heading = result.select_one("div.heading a")
             if not heading:
                 continue
             result_name = heading.get_text(strip=True)
-            if _normalize(result_name) == norm_name:
+            if _normalize_alnum(result_name) == norm_name:
                 itemurl = result.select_one("div.itemurl a")
                 if itemurl:
                     url = itemurl.get_text(strip=True).rstrip("/")
@@ -194,7 +202,10 @@ async def populate_bandcamp_info(artist_info: dict[str, Any]) -> dict[str, Any]:
     """
     bc_url = artist_info.get("bandcamp")
 
-    if not bc_url:
+    if bc_url:
+        bc_url = _normalize_bc_url(bc_url)
+        artist_info["bandcamp"] = bc_url
+    else:
         name = artist_info.get("name")
         if not name:
             return artist_info

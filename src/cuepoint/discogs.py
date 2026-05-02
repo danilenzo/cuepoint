@@ -90,7 +90,7 @@ async def _api_get(url: str, params: dict[str, Any] | None = None) -> Any:
     global _last_request_time, _rate_remaining
 
     async with _rate_lock:
-        now = time.time()
+        now = time.monotonic()
         if _rate_remaining <= 5:
             min_interval = 2.0
         elif _rate_remaining <= 15:
@@ -100,7 +100,7 @@ async def _api_get(url: str, params: dict[str, Any] | None = None) -> Any:
         elapsed = now - _last_request_time
         if elapsed < min_interval:
             await asyncio.sleep(min_interval - elapsed)
-        _last_request_time = time.time()
+        _last_request_time = time.monotonic()
 
     client = await _get_client()
     r = await client.get(url, params=params)

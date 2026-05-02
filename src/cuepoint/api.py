@@ -28,6 +28,7 @@ from typing import Any
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -49,6 +50,13 @@ app = FastAPI(
     description="Electronic music event scanner — fetches RA.co events, enriches artists via SoundCloud/Discogs/Bandcamp, filters and ranks by genre.",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ---------------------------------------------------------------------------
@@ -346,12 +354,7 @@ async def root() -> dict[str, Any]:
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
-    db_ok = False
-    try:
-        store._get_conn().execute("SELECT 1").fetchone()
-        db_ok = True
-    except Exception:
-        pass
+    db_ok = store.check_db()
     return HealthResponse(
         status="ok" if db_ok else "degraded",
         version="1.0.0",

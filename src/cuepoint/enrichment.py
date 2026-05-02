@@ -303,39 +303,6 @@ async def enrich_batch_phased(
 # ---------------------------------------------------------------------------
 
 
-async def get_club_artist_info(
-    artist: dict[str, Any], get_artist_urls_fn: Callable[..., Any] | None = None
-) -> dict[str, Any]:
-    """Single club artist enrichment (fallback for individual calls)."""
-    cached = get_cached_artist(artist["id"])
-    if cached is not None:
-        return cached
-
-    enriched = dict(artist)
-
-    if not enriched.get("soundcloud"):
-        sc_url = await search_sc_by_name(artist["name"])
-        if sc_url:
-            enriched["soundcloud"] = sc_url
-
-    try:
-        enriched = await populate_sc_info(enriched)
-    except Exception as e:
-        logger.warning(f"SC populate failed for '{artist['name']}': {e}")
-    try:
-        enriched = await populate_discogs_info(enriched)
-    except Exception as e:
-        logger.warning(f"Discogs failed for club artist '{artist['name']}': {e}")
-    try:
-        enriched = await populate_bandcamp_info(enriched)
-    except Exception as e:
-        logger.warning(f"Bandcamp failed for club artist '{artist['name']}': {e}")
-
-    check_rising(artist["id"], enriched)
-    save_cached_artist(artist["id"], enriched)
-    return enriched
-
-
 async def enrich_club_batch_phased(
     stubs: list[dict[str, Any]], stats: ScanStats | None = None
 ) -> dict[str, dict[str, Any]]:

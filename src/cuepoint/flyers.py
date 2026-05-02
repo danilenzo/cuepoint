@@ -43,17 +43,18 @@ async def embed_flyers(urls: list[str | None]) -> list[str | None]:
     logger.info(f"Downloading {len(work)} flyer images ({_DOWNLOAD_CONCURRENCY} concurrent)...")
     sem = asyncio.Semaphore(_DOWNLOAD_CONCURRENCY)
 
-    async def _fetch(idx: int, url: str) -> None:
-        async with sem:
-            try:
-                async with httpx.AsyncClient(headers=_HEADERS, timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True) as c:
-                    r = await c.get(url)
+    async with httpx.AsyncClient(headers=_HEADERS, timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True) as client:
+
+        async def _fetch(idx: int, url: str) -> None:
+            async with sem:
+                try:
+                    r = await client.get(url)
                     r.raise_for_status()
                     results[idx] = _to_data_uri(r.content)
-            except Exception as e:
-                logger.debug(f"Failed to download flyer {url}: {e}")
+                except Exception as e:
+                    logger.debug(f"Failed to download flyer {url}: {e}")
 
-    await asyncio.gather(*[_fetch(i, url) for i, url in work])
+        await asyncio.gather(*[_fetch(i, url) for i, url in work])
 
     embedded = sum(1 for i, _ in work if isinstance(results[i], str) and str(results[i]).startswith("data:"))
     logger.info(f"Embedded {embedded}/{len(work)} flyer images")

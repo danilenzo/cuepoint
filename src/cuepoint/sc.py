@@ -24,6 +24,7 @@ import httpx
 from loguru import logger
 
 from .following import is_following
+from .fuzzy_match import _normalize_alnum
 from .generic import BASE_PATH
 from .http_utils import async_retry_on_failure
 
@@ -256,10 +257,6 @@ def is_oauth() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _normalize(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", s.lower())
-
-
 def _is_valid_sc_url(url: str) -> bool:
     """Check that the URL is a clean SoundCloud profile link."""
     return bool(re.match(r"https?://soundcloud\.com/[\w-]+/?$", url))
@@ -276,12 +273,12 @@ async def search_sc_by_name(name: str) -> str | None:
     """Search SoundCloud for a user by name. Returns permalink URL on a close match, else None."""
     try:
         r = await _api_get(f"{_API_BASE}/users", params={"q": name, "limit": 5}, timeout=10.0)
-        norm_name = _normalize(name)
+        norm_name = _normalize_alnum(name)
         for user in r.json().get("collection", []):
             if (
-                _normalize(user.get("username", "")) == norm_name
-                or _normalize(user.get("permalink", "")) == norm_name
-                or _normalize(user.get("full_name", "")) == norm_name
+                _normalize_alnum(user.get("username", "")) == norm_name
+                or _normalize_alnum(user.get("permalink", "")) == norm_name
+                or _normalize_alnum(user.get("full_name", "")) == norm_name
             ):
                 return str(user.get("permalink_url")) if user.get("permalink_url") else None
     except Exception as e:
