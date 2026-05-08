@@ -31,10 +31,25 @@ class TestGetCachedArtist:
     @patch("cuepoint.enrichment.is_following", return_value=False)
     @patch("cuepoint.enrichment.store")
     def test_returns_data_when_fresh(self, mock_store, _):
-        data = {"name": "Test", "soundcloud": "/test"}
+        data = {"name": "Test", "soundcloud": "/test", "sc_followers": 100}
         mock_store.get_cached_artist.return_value = (data, datetime.now().isoformat())
         result = get_cached_artist("123")
         assert result == data
+
+    @patch("cuepoint.enrichment.is_following", return_value=False)
+    @patch("cuepoint.enrichment.store")
+    def test_sc_incomplete_fresh_returns_data(self, mock_store, _):
+        data = {"name": "Test", "soundcloud": "/test", "sc_followers": None}
+        mock_store.get_cached_artist.return_value = (data, datetime.now().isoformat())
+        assert get_cached_artist("123") == data
+
+    @patch("cuepoint.enrichment.is_following", return_value=False)
+    @patch("cuepoint.enrichment.store")
+    def test_sc_incomplete_stale_treated_as_miss(self, mock_store, _):
+        data = {"name": "Test", "soundcloud": "/test", "sc_followers": None}
+        old_date = (datetime.now() - timedelta(days=2)).isoformat()
+        mock_store.get_cached_artist.return_value = (data, old_date)
+        assert get_cached_artist("123") is None
 
     @patch("cuepoint.enrichment.CACHE_TTL_DAYS", 30)
     @patch("cuepoint.enrichment.is_following", return_value=False)

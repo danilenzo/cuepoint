@@ -42,6 +42,9 @@ def get_cached_artist(artist_id: str | int) -> dict[str, Any] | None:
     ttl = CACHE_TTL_FOLLOWING_DAYS if (sc_url and is_following(sc_url)) else CACHE_TTL_DAYS
     if (datetime.now() - cached_at).days >= ttl:
         return None
+    if sc_url and data.get("sc_followers") is None:
+        if (datetime.now() - cached_at).days >= 1:
+            return None
     return data
 
 

@@ -16,6 +16,7 @@ _DOWNLOAD_TIMEOUT = 10.0
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:106.0) Gecko/20100101 Firefox/106.0",
+    "Referer": "https://ra.co/",
 }
 
 
@@ -52,7 +53,7 @@ async def embed_flyers(urls: list[str | None]) -> list[str | None]:
                     r.raise_for_status()
                     results[idx] = _to_data_uri(r.content)
                 except Exception as e:
-                    logger.debug(f"Failed to download flyer {url}: {e}")
+                    logger.debug(f"Failed to download flyer {url}: {type(e).__name__}: {e}")
 
         await asyncio.gather(*[_fetch(i, url) for i, url in work])
 

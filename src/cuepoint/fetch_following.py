@@ -41,22 +41,32 @@ def _check_profile_lock(profile_url: str, *, force: bool) -> None:
     _PROFILE_FILE.write_text(normalised, encoding="utf-8")
 
 
+_CLIENT_ID_PATTERNS = [
+    re.compile(r'client_id\s*:\s*"([a-zA-Z0-9]{32})"'),
+    re.compile(r"client_id\s*:\s*'([a-zA-Z0-9]{32})'"),
+    re.compile(r'clientId\s*[:=]\s*"([a-zA-Z0-9]{32})"'),
+]
+
+
 def get_client_id(session: requests.Session) -> str:
     """Extract the client_id embedded in SoundCloud's JS bundles."""
-    r = session.get("https://soundcloud.com", timeout=15)
-    r.raise_for_status()
+    for attempt in range(3):
+        r = session.get("https://soundcloud.com", timeout=15)
+        r.raise_for_status()
+        js_urls = list(dict.fromkeys(re.findall(r'https://[^"\']+\.js', r.text)))
+        sndcdn = [u for u in js_urls if "sndcdn.com" in u]
+        if sndcdn:
+            break
+    else:
+        raise RuntimeError("Could not load SoundCloud JS bundles after 3 attempts.")
 
-    # Find JS bundle URLs in the page
-    js_urls = re.findall(r'https://[^"]+\.js', r.text)
-    # Deduplicate, prefer smaller numbered bundles (they tend to have auth config)
-    js_urls = list(dict.fromkeys(js_urls))
-
-    for js_url in js_urls[-5:]:  # check last few bundles
+    for js_url in sndcdn:
         try:
             js_r = session.get(js_url, timeout=10)
-            match = re.search(r'client_id\s*:\s*"([a-zA-Z0-9]{32})"', js_r.text)
-            if match:
-                return match.group(1)
+            for pat in _CLIENT_ID_PATTERNS:
+                match = pat.search(js_r.text)
+                if match:
+                    return match.group(1)
         except requests.RequestException:
             continue
 

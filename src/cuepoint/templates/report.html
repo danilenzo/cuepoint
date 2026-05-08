@@ -310,7 +310,7 @@
         display: flex; justify-content: space-between; align-items: baseline;
         gap: 6px; padding: 1px 0; font-size: 12px; line-height: 1.5;
     }
-    .ticket-line .tk-name { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ticket-line .tk-name { color: var(--text-secondary); min-width: 0; }
     .ticket-line .tk-price { font-weight: 600; color: var(--text-primary); white-space: nowrap; margin-left: auto; }
     .lineup-toggle {
         cursor: pointer; font-size: 12px; color: var(--accent);
@@ -358,33 +358,56 @@
     .event-card.followed {
         border-left: 3px solid var(--accent); background: var(--accent-dim);
     }
-    .event-card .card-flyer { position: relative; overflow: hidden; }
+    .event-card .card-flyer { position: relative; overflow: hidden; background: var(--bg-secondary); }
     .event-card .card-flyer img {
         width: 100%; max-width: 100%; border-radius: 0;
-        display: block; aspect-ratio: 16/9; object-fit: cover;
+        display: block; object-fit: cover; max-height: 55vh;
     }
-    .event-card .card-flyer .card-date-badge {
-        position: absolute; bottom: 10px; left: 10px;
-        background: rgba(12,14,18,0.85); backdrop-filter: blur(8px);
-        padding: 5px 10px; border-radius: var(--radius-xs);
-        font-size: 12px; font-weight: 600; color: var(--text-primary);
+    .event-card .card-flyer::after {
+        content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 70%;
+        background: linear-gradient(to top, rgba(12,14,18,0.95) 0%, rgba(12,14,18,0.4) 55%, transparent 100%);
+        pointer-events: none; z-index: 1;
     }
-    .event-card .card-body { padding: 16px; flex: 1; display: flex; flex-direction: column; }
-    .event-card .card-header { margin-bottom: 10px; }
-    .event-card .card-title {
-        font-size: 15px; font-weight: 600; margin-bottom: 6px;
-        display: flex; align-items: flex-start; gap: 4px;
+    .event-card .card-flyer.no-flyer {
+        min-height: 120px;
+        background: linear-gradient(135deg, #1a1e2e 0%, #1f2640 50%, #252b3d 100%);
     }
-    .event-card .card-title a { flex: 1; }
-    .event-card .card-meta {
-        font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;
-        display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center;
+    .event-card .card-flyer.no-flyer::after { display: none; }
+    .card-overlay {
+        position: absolute; bottom: 0; left: 0; right: 0;
+        padding: 14px 16px; z-index: 2;
     }
-    .event-card .card-meta .meta-item {
-        display: inline-flex; align-items: center; gap: 4px;
+    .no-flyer .card-overlay { position: relative; padding-right: 60px; }
+    .card-overlay-date {
+        font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.7);
+        margin-bottom: 5px; display: flex; align-items: center; gap: 6px;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.6);
     }
-    .event-card .card-meta svg { width: 12px; height: 12px; opacity: 0.5; }
-    .event-card .card-genres { margin-bottom: 10px; }
+    .card-overlay-title {
+        font-size: 16px; font-weight: 700; line-height: 1.3; margin-bottom: 5px;
+        display: flex; align-items: flex-start; gap: 8px;
+        text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+    }
+    .card-overlay-title a { color: #fff; flex: 1; }
+    .card-overlay-title a:hover { color: var(--accent); }
+    .card-overlay-venue {
+        font-size: 12px; color: rgba(255,255,255,0.6);
+        display: flex; align-items: center; gap: 5px; margin-bottom: 6px;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    }
+    .card-overlay-venue svg { width: 12px; height: 12px; opacity: 0.5; flex-shrink: 0; }
+    .card-overlay-venue a { color: rgba(255,255,255,0.75); }
+    .card-overlay-venue a:hover { color: var(--accent); }
+    .card-overlay-genres .genre-pill { font-size: 10px; padding: 2px 8px; }
+    .card-cal {
+        position: absolute; top: 10px; right: 10px; z-index: 3;
+        opacity: 0.6; background: rgba(12,14,18,0.5);
+        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        border-radius: var(--radius-sm); width: 44px; height: 44px;
+    }
+    .card-cal:hover { opacity: 1; background: rgba(12,14,18,0.8); }
+    .card-cal svg { width: 20px; height: 20px; }
+    .event-card .card-body { padding: 12px 16px 16px; flex: 1; display: flex; flex-direction: column; }
     .event-card .card-tickets {
         font-size: 12px; color: var(--text-secondary);
         padding: 8px 0; border-top: 1px solid var(--border);
@@ -429,6 +452,23 @@
     }
     .score-breakdown .sb-bar-fill.followed { background: var(--green); }
     .score-breakdown .sb-bar-fill.rising { background: var(--red); }
+    /* match badge */
+    .match-badge {
+        display: inline-flex; align-items: center;
+        padding: 2px 8px; border-radius: 10px;
+        font-size: 12px; font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.3px;
+        cursor: pointer; transition: opacity var(--transition-fast);
+    }
+    .match-badge:hover { opacity: 0.8; }
+    .match-badge.high { background: var(--green-dim); color: var(--green); }
+    .match-badge.mid { background: var(--accent-dim); color: var(--accent); }
+    .match-badge.low { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+    /* briefing */
+    .briefing { padding: 6px 0 2px; font-size: 12px; line-height: 1.7; }
+    .briefing-reason { display: block; color: var(--text-secondary); padding: 1px 0; }
+    .briefing-reason::before { content: "\2192 "; color: var(--accent); font-weight: 600; }
     /* scrollbar */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: var(--bg-primary); }
@@ -455,6 +495,47 @@
         border-radius: 3px; font-family: inherit; color: var(--text-muted);
         vertical-align: middle; line-height: 1.4;
     }
+    /* genre quick-filter chips */
+    .genre-chips {
+        display: none; overflow-x: auto; -webkit-overflow-scrolling: touch;
+        padding: 8px clamp(8px, 2vw, 24px); gap: 8px;
+        background: var(--bg-primary); border-bottom: 1px solid var(--border);
+    }
+    .genre-chips::-webkit-scrollbar { display: none; }
+    .genre-chips { scrollbar-width: none; }
+    .genre-chip {
+        display: inline-flex; align-items: center;
+        padding: 7px 16px; border-radius: 20px;
+        font-size: 13px; font-weight: 500; min-height: 44px;
+        background: var(--bg-elevated); color: var(--text-secondary);
+        border: 1px solid var(--border); cursor: pointer;
+        transition: all var(--transition-fast);
+        white-space: nowrap; font-family: inherit; flex-shrink: 0;
+        touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    }
+    .genre-chip:active { transform: scale(0.95); }
+    .genre-chip.active { background: var(--accent-dim); color: var(--accent); border-color: rgba(74,158,255,0.3); }
+    .genre-chip.active.techno { background: rgba(224,108,117,0.14); color: #e88a91; border-color: rgba(224,108,117,0.3); }
+    .genre-chip.active.dnb { background: rgba(198,120,221,0.14); color: #d496e8; border-color: rgba(198,120,221,0.3); }
+    .genre-chip.active.house { background: rgba(97,175,239,0.14); color: #79b8f0; border-color: rgba(97,175,239,0.3); }
+    .genre-chip.active.ambient { background: rgba(86,182,194,0.14); color: #6ec8d4; border-color: rgba(86,182,194,0.3); }
+    .genre-chip.active.industrial { background: rgba(190,146,100,0.14); color: #c8a87a; border-color: rgba(190,146,100,0.3); }
+    /* card expand/collapse */
+    .card-body-wrap {
+        flex: 1; display: flex; flex-direction: column;
+    }
+    .card-body-wrap.collapsed { max-height: 0; opacity: 0; overflow: hidden; }
+    .card-expand-hint {
+        display: none; align-items: center; justify-content: center; gap: 4px;
+        text-align: center; padding: 10px; min-height: 44px;
+        font-size: 12px; color: var(--text-muted); font-family: inherit;
+        border-top: 1px solid var(--border); cursor: pointer;
+        background: none; border-left: none; border-right: none; border-bottom: none;
+        width: 100%; transition: color var(--transition-fast);
+        touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    }
+    .card-expand-hint:active { color: var(--accent); }
+    .card-expand-hint svg { width: 12px; height: 12px; }
     /* responsive */
     @media (max-width: 1200px) {
         td:nth-child(10), th:nth-child(10) { display: none; }
@@ -467,7 +548,7 @@
         .toolbar-sep { display: none; }
         .table-wrap, .card-grid { padding: 8px 8px 24px; }
         td, th { padding: 8px 8px; font-size: 12px; }
-        img { max-width: 140px; }
+        .table-wrap img { max-width: 140px; }
     }
     @media (max-width: 768px) {
         .toolbar-brand .brand-text { display: none; }
@@ -493,7 +574,7 @@
             content: attr(data-label); display: block; font-size: 10px; font-weight: 600;
             text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 4px;
         }
-        td[data-label="flyer"] img { max-width: 100%; width: 100%; border-radius: var(--radius) var(--radius) 0 0; }
+        td[data-label="flyer"] img { max-width: 100%; width: 100%; max-height: 60vh; object-fit: cover; border-radius: var(--radius) var(--radius) 0 0; }
         td[data-label="flyer"] { padding: 0; order: -1; }
         td[data-label="flyer"]::before { display: none; }
         td[data-label="time"] { background: var(--bg-elevated); font-size: 13px; }
@@ -501,8 +582,18 @@
         td[data-label="genre"] .genre-pill { font-size: 10px; padding: 2px 7px; }
         td[data-label="lineup"] .artist-row { font-size: 12px; }
         td[data-label="lineup"] .artist-stats { font-size: 11px; }
-        .card-grid { grid-template-columns: 1fr; padding: 8px; }
+        .card-grid { grid-template-columns: 1fr; padding: 8px; gap: 20px; }
         .event-card:hover { transform: none; }
+        .event-card .card-flyer img { max-height: 60vh; }
+        .card-overlay-title { font-size: 18px; }
+        .card-overlay { padding: 16px; }
+        .genre-chips { display: flex; }
+        .genre-dropdown { display: none; }
+        .card-body-wrap {
+            overflow: hidden; max-height: 800px;
+            transition: max-height 300ms ease-out, opacity 200ms ease;
+        }
+        .card-expand-hint { display: flex; align-items: center; justify-content: center; gap: 4px; }
     }
 </style>
 </head>
@@ -559,6 +650,21 @@
         <span class="count">{{ visibleCount === totalCount ? totalCount + ' events' : visibleCount + ' / ' + totalCount + ' events' }}</span>
     </div>
 
+    <!-- Genre quick-filter chips (mobile) -->
+    <div class="genre-chips" v-if="topGenres.length">
+        <button v-if="selectedGenres.length" class="genre-chip active"
+                @click="selectedGenres = []" style="color:var(--red);border-color:rgba(224,108,117,0.3);background:var(--red-dim);">
+            Clear
+        </button>
+        <button v-for="g in topGenres" :key="g.name"
+                class="genre-chip"
+                :class="[{active: selectedGenres.includes(g.name)}, g.category]"
+                :aria-pressed="selectedGenres.includes(g.name)"
+                @click="toggleGenreChip(g.name)">
+            {{ g.name }}
+        </button>
+    </div>
+
     <!-- Table view -->
     <div class="table-wrap" v-if="viewMode === 'table'">
         <table v-if="filteredEvents.length">
@@ -582,14 +688,17 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                         </button>
                         <a :href="ev.eventUrl">{{ ev.title }}</a>
-                        <button v-if="ev.score" class="score-toggle" @click="ev.scoreExpanded = !ev.scoreExpanded" :title="'Score: ' + fmtNum(ev.score)">
-                            &#9733; {{ fmtNum(ev.score) }}
-                        </button>
-                        <div class="score-breakdown" v-if="ev.scoreExpanded && ev.scoreBreakdown.length">
-                            <div class="sb-row" v-for="s in ev.scoreBreakdown" :key="s.key">
-                                <span class="sb-label">{{ s.label }}</span>
-                                <span class="sb-bar"><span class="sb-bar-fill" :class="s.key" :style="{width: Math.min(100, s.value / ev.score * 100) + '%'}"></span></span>
-                                <span class="sb-val">{{ fmtNum(s.value) }}</span>
+                        <span v-if="ev.matchPct" class="match-badge" :class="matchClass(ev.matchPct)" @click="ev.scoreExpanded = !ev.scoreExpanded" :title="'Score: ' + fmtNum(ev.score)">{{ ev.matchPct }}%</span>
+                        <div v-if="ev.scoreExpanded">
+                            <div v-if="ev.briefing.length" class="briefing">
+                                <span v-for="(r, i) in ev.briefing" :key="i" class="briefing-reason">{{ r }}</span>
+                            </div>
+                            <div class="score-breakdown" v-if="ev.scoreBreakdown.length">
+                                <div class="sb-row" v-for="s in ev.scoreBreakdown" :key="s.key">
+                                    <span class="sb-label">{{ s.label }}</span>
+                                    <span class="sb-bar"><span class="sb-bar-fill" :class="s.key" :style="{width: Math.min(100, s.value / ev.score * 100) + '%'}"></span></span>
+                                    <span class="sb-val">{{ fmtNum(s.value) }}</span>
+                                </div>
                             </div>
                         </div>
                     </td>
@@ -673,103 +782,102 @@
     <!-- Card view -->
     <div class="card-grid" v-if="viewMode === 'card'">
         <div class="event-card" v-for="ev in filteredEvents" :key="ev.id"
-             :class="{followed: ev.hasFollowed}">
-            <div class="card-flyer" v-if="ev.flyer">
-                <img :src="ev.flyer" alt="Event flyer" loading="lazy">
-                <div class="card-date-badge">{{ formatDate(ev.startTime) }}</div>
-            </div>
-            <div class="card-body">
-                <div class="card-header">
-                    <div class="card-title">
-                        <button class="cal-btn" @click="downloadSingleICS(ev)" title="Download .ics" aria-label="Download calendar event">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                        </button>
+             :class="{followed: ev.hasFollowed}"
+             @click="toggleCard(ev, $event)">
+            <div class="card-flyer" :class="{'no-flyer': !ev.flyer}">
+                <img v-if="ev.flyer" :src="ev.flyer" :alt="ev.title" loading="lazy">
+                <button class="cal-btn card-cal" @click.stop="downloadSingleICS(ev)" title="Download .ics" aria-label="Download calendar event">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                </button>
+                <div class="card-overlay">
+                    <div class="card-overlay-date">
+                        {{ formatDate(ev.startTime) }} <span style="opacity:0.4">&middot;</span> {{ formatTimeRange(ev.startTime, ev.endTime) }}
+                    </div>
+                    <div class="card-overlay-title">
                         <a :href="ev.eventUrl">{{ ev.title }}</a>
+                        <span v-if="ev.matchPct" class="match-badge" :class="matchClass(ev.matchPct)" @click.stop="ev.scoreExpanded = !ev.scoreExpanded; if (isMobile && !ev.cardExpanded) ev.cardExpanded = true">{{ ev.matchPct }}%</span>
                     </div>
-                    <div class="card-meta">
-                        <span class="meta-item" v-if="!ev.flyer">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                            {{ formatDate(ev.startTime) }}
-                        </span>
-                        <span class="meta-item">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            {{ formatTimeRange(ev.startTime, ev.endTime) }}
-                        </span>
-                        <span class="meta-item">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                            <a :href="ev.venueUrl">{{ ev.venueName }}</a>
-                        </span>
-                        <span class="meta-item" v-if="ev.attending">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                            {{ fmtNum(ev.attending) }}
-                        </span>
+                    <div class="card-overlay-venue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <a :href="ev.venueUrl">{{ ev.venueName }}</a>
+                        <span v-if="ev.attending" style="opacity:0.5">&middot; {{ fmtNum(ev.attending) }} going</span>
+                    </div>
+                    <div class="card-overlay-genres" v-if="ev.genres.length">
+                        <span v-for="g in ev.genres" :key="g.name" :class="'genre-pill ' + g.category">{{ g.name }}</span>
                     </div>
                 </div>
-                <div class="card-genres">
-                    <span v-for="g in ev.genres" :key="g.name" :class="'genre-pill ' + g.category">
-                        {{ g.name }} <span class="genre-count">{{ g.count }}</span>
-                    </span>
-                </div>
-                <div v-if="ev.score" style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">
-                    <button class="score-toggle" @click="ev.scoreExpanded = !ev.scoreExpanded" :title="'Score: ' + fmtNum(ev.score)">
-                        &#9733; {{ fmtNum(ev.score) }}
-                    </button>
-                    <div class="score-breakdown" v-if="ev.scoreExpanded && ev.scoreBreakdown.length">
+            </div>
+            <div class="card-body-wrap" :class="{collapsed: !ev.cardExpanded && isMobile}">
+                <div class="card-body">
+                    <div v-if="ev.scoreExpanded && ev.scoreBreakdown.length" class="score-breakdown" style="margin-bottom:10px;">
                         <div class="sb-row" v-for="s in ev.scoreBreakdown" :key="s.key">
                             <span class="sb-label">{{ s.label }}</span>
                             <span class="sb-bar"><span class="sb-bar-fill" :class="s.key" :style="{width: Math.min(100, s.value / ev.score * 100) + '%'}"></span></span>
                             <span class="sb-val">{{ fmtNum(s.value) }}</span>
                         </div>
                     </div>
-                </div>
-                <div class="card-strength" v-if="ev.totalArtists && ev.notableCount">
-                    Strength: {{ ev.notableCount }}/{{ ev.totalArtists }}
-                    <span class="str-track"><span class="str-fill" :style="{width: Math.round(ev.notableCount/ev.totalArtists*100)+'%'}"></span></span>
-                </div>
-                <div class="card-tickets" v-if="ev.tickets && ev.tickets.length">
-                    <template v-if="ev.tickets.every(t => t.soldOut)">
-                        <span class="sold-out">SOLD OUT</span>
-                    </template>
-                    <template v-else>
-                        <div class="ticket-row" v-for="t in ev.tickets.filter(t => !t.soldOut).sort((a, b) => a.price - b.price)" :key="t.title">
-                            <span class="ticket-name">{{ cleanTicketTitle(t.title) }}</span>
-                            <span class="ticket-price">{{ t.symbol }}{{ t.price.toFixed(2) }}</span>
-                        </div>
-                    </template>
-                </div>
-                <div class="card-lineup">
-                    <template v-for="(a, idx) in (ev.lineupExpanded || ev.artists.length <= 7 ? ev.artists : ev.artists.slice(0, 5))" :key="idx">
-                        <div class="floor-label" v-if="a.floor && (idx === 0 || a.floor !== ev.artists[idx-1].floor)">{{ a.floor }}</div>
-                        <div class="artist-row">
-                            <template v-if="a.scUrl">
-                                <a :href="a.scUrl"><b v-if="a.isFollowed">{{ a.name }}</b><span v-else>{{ a.name }}</span></a>
-                            </template>
-                            <span v-else>{{ a.name }}</span>
-                            <span class="artist-stats" v-if="a.scFollowers || a.dcHave || a.bcUrl">
-                                <template v-if="a.scFollowers">
-                                    <span :class="a.isFollowed ? 'stat-val followed' : 'stat-label'">SC</span>
-                                    <span class="stat-val">{{ fmtNum(a.scFollowers) }}</span>
+                    <div v-if="ev.briefing.length" class="briefing" style="margin-bottom:10px;">
+                        <span v-for="(r, i) in ev.briefing" :key="i" class="briefing-reason">{{ r }}</span>
+                    </div>
+                    <div class="card-strength" v-if="ev.totalArtists && ev.notableCount">
+                        Strength: {{ ev.notableCount }}/{{ ev.totalArtists }}
+                        <span class="str-track"><span class="str-fill" :style="{width: Math.round(ev.notableCount/ev.totalArtists*100)+'%'}"></span></span>
+                    </div>
+                    <div class="card-tickets" v-if="ev.tickets && ev.tickets.length">
+                        <template v-if="ev.tickets.every(t => t.soldOut)">
+                            <span class="sold-out">SOLD OUT</span>
+                        </template>
+                        <template v-else>
+                            <div class="ticket-row" v-for="t in ev.tickets.filter(t => !t.soldOut).sort((a, b) => a.price - b.price)" :key="t.title">
+                                <span class="ticket-name">{{ cleanTicketTitle(t.title) }}</span>
+                                <span class="ticket-price">{{ t.symbol }}{{ t.price.toFixed(2) }}</span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="card-lineup">
+                        <template v-for="(a, idx) in (ev.lineupExpanded || ev.artists.length <= 5 ? ev.artists : ev.artists.slice(0, 3))" :key="idx">
+                            <div class="floor-label" v-if="a.floor && (idx === 0 || a.floor !== ev.artists[idx-1].floor)">{{ a.floor }}</div>
+                            <div class="artist-row">
+                                <template v-if="a.scUrl">
+                                    <a :href="a.scUrl"><b v-if="a.isFollowed">{{ a.name }}</b><span v-else>{{ a.name }}</span></a>
                                 </template>
-                                <template v-if="a.dcHave"> &middot; <span class="stat-label">DC</span> <span class="stat-val">{{ fmtNum(a.dcHave) }}</span></template>
-                                <template v-if="a.bcUrl">
-                                    &middot; <a :href="a.bcUrl" class="stat-label">BC</a>
-                                    <span v-if="a.bcSupporters" class="stat-val">{{ fmtNum(a.bcSupporters) }}</span>
-                                    <span v-if="a.bcLatestRelease" style="opacity:0.4;font-size:0.85em;"> {{ a.bcLatestRelease }}</span>
-                                </template>
-                            </span>
-                            <span v-if="a.rising" class="rising-badge" title="Rising artist">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                            </span>
-                            <span v-if="a.similarTo" class="sim-badge">~ {{ a.similarTo }}</span>
-                        </div>
-                    </template>
-                    <button v-if="ev.artists.length > 7" class="lineup-toggle" @click="ev.lineupExpanded = !ev.lineupExpanded">
-                        <svg v-if="!ev.lineupExpanded" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                        {{ ev.lineupExpanded ? 'Show less' : 'Show ' + (ev.artists.length - 5) + ' more' }}
-                    </button>
+                                <span v-else>{{ a.name }}</span>
+                                <span class="artist-stats" v-if="a.scFollowers || a.dcHave || a.bcUrl">
+                                    <template v-if="a.scFollowers">
+                                        <span :class="a.isFollowed ? 'stat-val followed' : 'stat-label'">SC</span>
+                                        <span class="stat-val">{{ fmtNum(a.scFollowers) }}</span>
+                                    </template>
+                                    <template v-if="a.dcHave"> &middot; <span class="stat-label">DC</span> <span class="stat-val">{{ fmtNum(a.dcHave) }}</span></template>
+                                    <template v-if="a.bcUrl">
+                                        &middot; <a :href="a.bcUrl" class="stat-label">BC</a>
+                                        <span v-if="a.bcSupporters" class="stat-val">{{ fmtNum(a.bcSupporters) }}</span>
+                                        <span v-if="a.bcLatestRelease" style="opacity:0.4;font-size:0.85em;"> {{ a.bcLatestRelease }}</span>
+                                    </template>
+                                </span>
+                                <span v-if="a.rising" class="rising-badge" title="Rising artist">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                                </span>
+                                <span v-if="a.similarTo" class="sim-badge">~ {{ a.similarTo }}</span>
+                            </div>
+                        </template>
+                        <button v-if="ev.artists.length > 5" class="lineup-toggle" @click.stop="ev.lineupExpanded = !ev.lineupExpanded">
+                            <svg v-if="!ev.lineupExpanded" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                            {{ ev.lineupExpanded ? 'Show less' : 'Show ' + (ev.artists.length - 3) + ' more' }}
+                        </button>
+                    </div>
                 </div>
             </div>
+            <button class="card-expand-hint" @click.stop="ev.cardExpanded = !ev.cardExpanded" v-if="isMobile" :aria-expanded="ev.cardExpanded" aria-label="Toggle event details">
+                <template v-if="!ev.cardExpanded">
+                    Details
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </template>
+                <template v-else>
+                    Hide
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                </template>
+            </button>
         </div>
         <div class="empty-state" v-if="!filteredEvents.length">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
@@ -789,6 +897,7 @@ const eventsData = reactive("__EVENTS_DATA__".map(ev => {
     ev.artists.forEach(a => { a.expanded = false; });
     ev.lineupExpanded = false;
     ev.scoreExpanded = false;
+    ev.cardExpanded = false;
     return ev;
 }));
 createApp({
@@ -797,19 +906,20 @@ createApp({
         const followedOnly = ref(false);
         const sortColumn = ref('');
         const sortAsc = ref(true);
-        const viewMode = ref('table');
+        const viewMode = ref(window.innerWidth <= 768 ? 'card' : 'table');
+        const isMobile = ref(window.innerWidth <= 768);
         const genreDropdownOpen = ref(false);
         const selectedGenres = ref([]);
         const genreDropdown = ref(null);
 
         const columns = [
             { key: 'time', label: 'Time', w: '8%' },
-            { key: 'tickets', label: 'Tickets', w: '7%' },
+            { key: 'tickets', label: 'Tickets', w: '10%' },
             { key: 'title', label: 'Title', w: '12%' },
             { key: 'attenders', label: 'Attenders', w: '4%' },
             { key: 'strength', label: 'Strength', w: '6%' },
             { key: 'genre', label: 'Genre', w: '10%' },
-            { key: 'lineup', label: 'Lineup', w: '24%' },
+            { key: 'lineup', label: 'Lineup', w: '21%' },
             { key: 'venue', label: 'Venue', w: '7%' },
             { key: 'promoters', label: 'Promoters', w: '7%' },
             { key: 'flyer', label: 'Flyer', w: '15%' },
@@ -913,6 +1023,46 @@ createApp({
             return String(n);
         }
 
+        function matchClass(pct) {
+            if (pct >= 75) return 'high';
+            if (pct >= 40) return 'mid';
+            return 'low';
+        }
+
+        const genreCategoryMap = {
+            'techno': 'techno', 'hard techno': 'techno', 'acid techno': 'techno',
+            'drum & bass': 'dnb', 'drum and bass': 'dnb', 'jungle': 'dnb',
+            'house': 'house', 'deep house': 'house', 'tech house': 'house', 'minimal house': 'house',
+            'ambient': 'ambient', 'drone': 'ambient', 'downtempo': 'ambient',
+            'industrial': 'industrial', 'ebm': 'industrial', 'noise': 'industrial',
+        };
+        function genreCategory(name) {
+            return genreCategoryMap[name.toLowerCase()] || 'default';
+        }
+
+        const topGenres = computed(() => {
+            const counts = {};
+            eventsData.forEach(ev => ev.genres.forEach(g => {
+                counts[g.name] = (counts[g.name] || 0) + 1;
+            }));
+            return Object.entries(counts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 15)
+                .map(([name]) => ({ name, category: genreCategory(name) }));
+        });
+
+        function toggleGenreChip(name) {
+            const idx = selectedGenres.value.indexOf(name);
+            if (idx >= 0) selectedGenres.value.splice(idx, 1);
+            else selectedGenres.value.push(name);
+        }
+
+        function toggleCard(ev, e) {
+            if (!isMobile.value) return;
+            if (e.target.closest('a, button, input')) return;
+            ev.cardExpanded = !ev.cardExpanded;
+        }
+
         function formatTickets(ev) {
             if (!ev.tickets || !ev.tickets.length) return '';
             var available = ev.tickets.filter(t => !t.soldOut).sort((a, b) => a.price - b.price);
@@ -981,8 +1131,9 @@ createApp({
                 genreDropdownOpen.value = false;
             }
         }
-        onMounted(() => document.addEventListener('click', onDocClick, true));
-        onUnmounted(() => document.removeEventListener('click', onDocClick, true));
+        function onResize() { isMobile.value = window.innerWidth <= 768; }
+        onMounted(() => { document.addEventListener('click', onDocClick, true); window.addEventListener('resize', onResize); });
+        onUnmounted(() => { document.removeEventListener('click', onDocClick, true); window.removeEventListener('resize', onResize); });
 
         // Keyboard shortcuts
         document.addEventListener('keydown', e => {
@@ -993,10 +1144,11 @@ createApp({
         });
 
         return {
-            searchQuery, followedOnly, sortColumn, sortAsc, viewMode,
+            searchQuery, followedOnly, sortColumn, sortAsc, viewMode, isMobile,
             genreDropdownOpen, selectedGenres, genreDropdown,
-            columns, allGenres, filteredEvents, visibleCount, totalCount,
-            sortBy, toggleView, formatDate, formatTimeRange, fmtNum, formatTickets, cleanTicketTitle,
+            columns, allGenres, topGenres, filteredEvents, visibleCount, totalCount,
+            sortBy, toggleView, toggleGenreChip, toggleCard,
+            formatDate, formatTimeRange, fmtNum, matchClass, formatTickets, cleanTicketTitle,
             downloadSingleICS, exportICS,
         };
     }

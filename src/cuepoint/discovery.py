@@ -73,6 +73,8 @@ def compute_similarity(artist_lookup: dict[str | int, dict[str, Any]]) -> None:
         best_name = None
         for _fid, (fname, ftags) in followed.items():
             intersection = len(tags & ftags)
+            if intersection < cfg.similarity_min_overlap():
+                continue
             union = len(tags | ftags)
             if union == 0:
                 continue

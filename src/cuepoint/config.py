@@ -158,6 +158,10 @@ def similarity_threshold() -> float:
     return _get("discovery", "similarity_threshold", 0.5)
 
 
+def similarity_min_overlap() -> int:
+    return _get("discovery", "similarity_min_overlap", 3)
+
+
 # -- Scoring: discovery signals --
 def rising_bonus() -> int:
     return _get("scoring", "rising_bonus", 3000)

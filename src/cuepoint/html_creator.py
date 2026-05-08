@@ -536,6 +536,8 @@ def _df_to_json(df: Any) -> list[dict[str, Any]]:
                 "attending": _safe_int(row.get("attending")),
                 "score": _safe_int(row.get("_score")),
                 "scoreBreakdown": _format_breakdown(row.get("_score_breakdown", {})),
+                "matchPct": _safe_int(row.get("_match_pct")),
+                "briefing": list(row.get("_briefing", [])),
                 "notableCount": _safe_int(row.get("_lineup_notable")),
                 "totalArtists": _safe_int(row.get("_lineup_total")),
                 "flyer": flyer,

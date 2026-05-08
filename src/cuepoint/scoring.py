@@ -177,4 +177,51 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
     df["_lineup_notable"] = density.apply(lambda x: x[0])
     df["_lineup_total"] = density.apply(lambda x: x[1])
 
+    max_score = df["_score"].max()
+    if max_score > 0:
+        df["_match_pct"] = (df["_score"].rank(pct=True) * 99).round().clip(0, 99).astype(int)
+        df.loc[df["_score"] <= 0, "_match_pct"] = 0
+    else:
+        df["_match_pct"] = 0
+
+    def _build_briefing(row: Any) -> list[str]:
+        reasons: list[str] = []
+        followed_names: list[str] = []
+        rising_names: list[str] = []
+        similar_pairs: list[tuple[str, str]] = []
+        label_info: list[tuple[str, list[str]]] = []
+
+        for a in row["artists_info"]:
+            if a is None:
+                continue
+            name = a.get("name", "")
+            if not name:
+                continue
+            if is_following(a.get("soundcloud")):
+                followed_names.append(name)
+            if a.get("_rising"):
+                rising_names.append(name)
+            if a.get("_similar_to"):
+                similar_pairs.append((name, a["_similar_to"]))
+            if a.get("_shared_labels"):
+                label_info.append((name, a["_shared_labels"][:2]))
+
+        if followed_names:
+            reasons.append("You follow " + ", ".join(followed_names[:3]))
+        for name, sim_to in similar_pairs[:2]:
+            reasons.append(f"{name} sounds like {sim_to}")
+        for name, labels in label_info[:2]:
+            reasons.append(f"{name} shares labels ({', '.join(labels)})")
+        if rising_names:
+            if len(rising_names) == 1:
+                reasons.append(f"{rising_names[0]} is rising")
+            else:
+                reasons.append(f"{len(rising_names)} rising artists")
+        total_hits = sum(count_genre_matches(a, _genre_set) for a in row["artists_info"] if a)
+        if total_hits >= 5 and not followed_names:
+            reasons.append("Strong genre match across lineup")
+        return reasons[:4]
+
+    df["_briefing"] = df.apply(_build_briefing, axis=1)
+
     return df.sort_values("_score", ascending=False).reset_index(drop=True)

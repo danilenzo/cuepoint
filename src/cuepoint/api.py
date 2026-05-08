@@ -134,6 +134,8 @@ class EventResult(BaseModel):
     event_url: str | None = None
     attending: int | None = None
     score: float = 0.0
+    match_pct: int = 0
+    briefing: list[str] = []
     lineup_notable: int = 0
     lineup_total: int = 0
     genres: list[str] = []
@@ -204,6 +206,8 @@ def _df_to_events(df: pd.DataFrame) -> list[dict[str, Any]]:
                 "event_url": row.get("event_url"),
                 "attending": int(row.get("attending", 0) or 0),
                 "score": round(float(row.get("_score", 0)), 1),
+                "match_pct": int(row.get("_match_pct", 0)),
+                "briefing": list(row.get("_briefing", [])),
                 "lineup_notable": int(row.get("_lineup_notable", 0)),
                 "lineup_total": int(row.get("_lineup_total", 0)),
                 "genres": genres,
