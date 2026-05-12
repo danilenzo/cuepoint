@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -41,6 +42,10 @@ from .event_fetcher import CITIES, close_clients
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
+    for task in _background_tasks:
+        task.cancel()
+    await asyncio.gather(*_background_tasks, return_exceptions=True)
+    _background_tasks.clear()
     await close_clients()
     store.close_db()
 
@@ -54,7 +59,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -63,9 +68,28 @@ app.add_middleware(
 # In-memory scan tracking
 # ---------------------------------------------------------------------------
 
+_MAX_SCANS = 200
+_SCAN_TTL = 3600  # 1 hour
 _scans: dict[str, dict[str, Any]] = {}
 _scans_lock = asyncio.Lock()
 _background_tasks: set[asyncio.Task[None]] = set()
+
+
+def _evict_stale_scans() -> None:
+    """Remove completed scans older than _SCAN_TTL, cap at _MAX_SCANS."""
+    now = time.monotonic()
+    stale = [
+        sid
+        for sid, s in _scans.items()
+        if s.get("status") in ("done", "error") and now - s.get("_mono", now) > _SCAN_TTL
+    ]
+    for sid in stale:
+        del _scans[sid]
+    if len(_scans) > _MAX_SCANS:
+        by_age = sorted(_scans, key=lambda sid: _scans[sid].get("_mono", 0))
+        for sid in by_age[: len(_scans) - _MAX_SCANS]:
+            del _scans[sid]
+
 
 # ---------------------------------------------------------------------------
 # Rate limiting (simple sliding window per IP)
@@ -234,87 +258,28 @@ async def _run_scan(scan_id: str, req: ScanRequest) -> None:
         store.migrate_if_needed()
         cleanup_cache()
 
+        from .event_fetcher import run_for_city
+
         start_date = datetime.now()
         raw_results = []
 
-        from .event_fetcher import ScanContext, _record_enrichment_health, get_data
-        from .generic import OUTPUT_PATH
-        from .html_creator import create_html
-        from .scoring import filter_df, sort_df
-        from .scoring import find_and_record as _find_and_record
-        from .stats import ScanStats
-
         for city_key in req.cities:
-            area, city_name, city_slug = CITIES[city_key]
-            ctx = ScanContext(
-                area=area,
-                city_name=city_name,
-                city_slug=city_slug,
-                start_date=start_date,
-                days_ahead=req.days,
+            city_name = CITIES[city_key][1]
+
+            def _save_api_results(sorted_df: pd.DataFrame, _city: str = city_name) -> None:
+                events_json = _df_to_events(sorted_df)
+                store.save_api_results(_city.lower(), events_json)
+
+            result = await run_for_city(
+                city_key,
+                start_date,
+                req.days,
+                full=req.full,
+                on_sorted_df=_save_api_results,
             )
-
-            if req.full:
-                store.clear_scan_snapshot(city_name)
-
-            stats = ScanStats(city=city_name)
-            stats.start()
-
-            try:
-                df = await get_data(ctx, stats=stats)
-                stats.ra_events_fetched = len(df)
-
-                if not df.empty:
-                    _find_and_record(df, city_name)
-                    filtered = filter_df(df)
-                    sorted_df = sort_df(filtered)
-                    sorted_df["city_name"] = city_name
-                    stats.events_after_filter = len(sorted_df)
-
-                    events_json = _df_to_events(sorted_df)
-                    store.save_api_results(city_name.lower(), events_json)
-
-                    stats.finish()
-                    _record_enrichment_health(stats)
-                    html_res = create_html(
-                        sorted_df,
-                        stats_html=stats.to_html_footer(),
-                        scraper_health=store.get_all_scraper_health(),
-                    )
-                    file_path = (
-                        OUTPUT_PATH + city_name + " " + start_date.strftime("%Y-%m-%d") + " " + str(req.days) + ".html"
-                    )
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(html_res)
-                    logger.info(f"Report saved: {file_path}")
-
-                    raw_results.append(
-                        {
-                            "city": city_name,
-                            "events": len(sorted_df),
-                            "followed": int(sorted_df.get("_score", pd.Series()).gt(500_000).sum()),
-                            "file_path": file_path,
-                        }
-                    )
-                else:
-                    stats.finish()
-                    _record_enrichment_health(stats)
-                    store.save_api_results(city_name.lower(), [])
-                    raw_results.append({"city": city_name, "events": 0, "followed": 0, "file_path": None})
-
-            except Exception as city_err:
-                stats.record_error(str(city_err))
-                stats.finish()
-                logger.error(f"Scan failed for {city_name}: {city_err}")
-                raw_results.append(
-                    {
-                        "city": city_name,
-                        "events": 0,
-                        "followed": 0,
-                        "file_path": None,
-                        "error": str(city_err),
-                    }
-                )
+            if result.get("events", 0) == 0 and "error" not in result:
+                store.save_api_results(city_name.lower(), [])
+            raw_results.append(result)
 
         await _update_scan(scan_id, status="completed", finished_at=datetime.now().isoformat(), results=raw_results)
 
@@ -390,6 +355,7 @@ async def start_scan(req: ScanRequest, request: Request) -> ScanResponse:
 
     scan_id = uuid.uuid4().hex[:12]
     async with _scans_lock:
+        _evict_stale_scans()
         _scans[scan_id] = {
             "scan_id": scan_id,
             "status": "pending",
@@ -398,6 +364,7 @@ async def start_scan(req: ScanRequest, request: Request) -> ScanResponse:
             "finished_at": None,
             "results": None,
             "error": None,
+            "_mono": time.monotonic(),
         }
 
     _background_tasks.add(task := asyncio.create_task(_run_scan(scan_id, req)))
@@ -419,6 +386,8 @@ async def list_scans() -> list[dict[str, Any]]:
 
 @app.get("/status/{scan_id}", response_model=ScanStatusResponse)
 async def get_scan_status(scan_id: str) -> dict[str, Any]:
+    if not re.fullmatch(r"[a-f0-9]{12}", scan_id):
+        raise HTTPException(status_code=400, detail="Invalid scan ID format")
     async with _scans_lock:
         scan = _scans.get(scan_id)
     if scan is None:
@@ -497,9 +466,10 @@ async def export_results(city: str) -> StreamingResponse:
         )
 
     output.seek(0)
-    filename = f"{city_display.lower().replace(' ', '_')}_events.csv"
+    safe_name = re.sub(r"[^a-z0-9_]", "_", city_display.lower())
+    filename = f"{safe_name}_events.csv"
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

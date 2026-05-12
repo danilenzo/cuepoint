@@ -8,6 +8,8 @@ from __future__ import annotations
 import tomllib
 from typing import Any, TypeVar
 
+from loguru import logger
+
 from .generic import BASE_PATH
 
 _CONFIG_PATH = BASE_PATH / "config.toml"
@@ -21,12 +23,48 @@ def _load() -> None:
     global _cfg
     if _cfg is not None:
         return
-    path = _CONFIG_PATH if _CONFIG_PATH.exists() else _CONFIG_EXAMPLE_PATH
-    try:
-        with open(path, "rb") as f:
-            _cfg = tomllib.load(f)
-    except FileNotFoundError:
+    if _CONFIG_PATH.exists():
+        path = _CONFIG_PATH
+    elif _CONFIG_EXAMPLE_PATH.exists():
+        path = _CONFIG_EXAMPLE_PATH
+        logger.warning(f"No config.toml found, using example config: {_CONFIG_EXAMPLE_PATH}")
+    else:
+        logger.warning("No config.toml or config.toml.example found, using built-in defaults")
         _cfg = {}
+        return
+    with open(path, "rb") as f:
+        _cfg = tomllib.load(f)
+    logger.info(f"Config loaded from {path}")
+
+
+def reload() -> None:
+    """Force re-read of config.toml from disk."""
+    global _cfg
+    _cfg = None
+    _load()
+    _validate()
+
+
+def _validate() -> None:
+    """Validate critical config values at load time."""
+    errors: list[str] = []
+    if days_ahead() < 1:
+        errors.append("general.days_ahead must be >= 1")
+    if ra_request_delay() < 0:
+        errors.append("general.ra_request_delay must be >= 0")
+    if max_workers() < 1:
+        errors.append("general.max_workers must be >= 1")
+    if cache_ttl_days() < 1:
+        errors.append("cache.ttl_days must be >= 1")
+    if cache_ttl_following_days() < 1:
+        errors.append("cache.ttl_following_days must be >= 1")
+    if sc_weight() < 0 or dc_weight() < 0 or bc_weight() < 0:
+        errors.append("scoring weights must be >= 0")
+    if similarity_threshold() < 0 or similarity_threshold() > 1:
+        errors.append("discovery.similarity_threshold must be between 0 and 1")
+    if errors:
+        for err in errors:
+            logger.warning(f"Config validation: {err}")
 
 
 def _get(section: str, key: str, default: _T) -> _T:

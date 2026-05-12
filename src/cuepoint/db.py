@@ -23,10 +23,12 @@ from .generic import BASE_PATH
 DB_PATH = BASE_PATH / "cache/cuepoint.db"
 
 _local = threading.local()
+_db_initialized = False
+_db_init_lock = threading.Lock()
 
 
-def _get_conn() -> sqlite3.Connection:
-    """One connection per thread, WAL mode for concurrent reads."""
+def _ensure_conn() -> sqlite3.Connection:
+    """Get or create the per-thread connection (no schema init)."""
     if not hasattr(_local, "conn") or _local.conn is None:
         DB_PATH.parent.mkdir(exist_ok=True)
         conn = sqlite3.connect(str(DB_PATH), timeout=10)
@@ -34,15 +36,30 @@ def _get_conn() -> sqlite3.Connection:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.row_factory = sqlite3.Row
         _local.conn = conn
-    result: sqlite3.Connection = _local.conn
-    return result
+    return _local.conn
+
+
+def _get_conn() -> sqlite3.Connection:
+    """One connection per thread, WAL mode for concurrent reads. Lazy schema init."""
+    conn = _ensure_conn()
+    global _db_initialized
+    if not _db_initialized:
+        with _db_init_lock:
+            if not _db_initialized:
+                _db_initialized = True
+                init_db()
+                _migrate_metrics_schema()
+                _migrate_scraper_health_schema()
+    return conn
 
 
 def close_db() -> None:
     """Close the current thread's connection (if any)."""
+    global _db_initialized
     if hasattr(_local, "conn") and _local.conn is not None:
         _local.conn.close()
         _local.conn = None
+    _db_initialized = False
 
 
 def check_db() -> bool:
@@ -50,13 +67,13 @@ def check_db() -> bool:
     try:
         _get_conn().execute("SELECT 1").fetchone()
         return True
-    except Exception:
+    except (sqlite3.Error, OSError):
         return False
 
 
 def init_db() -> None:
     """Create tables if they don't exist."""
-    conn = _get_conn()
+    conn = _ensure_conn()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS artist_urls (
             artist_id TEXT PRIMARY KEY,
@@ -75,10 +92,11 @@ def init_db() -> None:
         );
 
         CREATE TABLE IF NOT EXISTS artist_metrics_history (
-            artist_id    TEXT PRIMARY KEY,
+            artist_id    TEXT NOT NULL,
             sc_followers INTEGER,
             dc_want      INTEGER,
-            recorded_at  TEXT NOT NULL
+            recorded_at  TEXT NOT NULL,
+            PRIMARY KEY (artist_id, recorded_at)
         );
 
         CREATE TABLE IF NOT EXISTS scan_events (
@@ -97,12 +115,13 @@ def init_db() -> None:
         );
 
         CREATE TABLE IF NOT EXISTS scraper_health (
-            source       TEXT NOT NULL,
-            city         TEXT NOT NULL DEFAULT '',
-            status       TEXT NOT NULL,
-            events_found INTEGER NOT NULL DEFAULT 0,
-            error_msg    TEXT NOT NULL DEFAULT '',
-            recorded_at  TEXT NOT NULL,
+            source           TEXT NOT NULL,
+            city             TEXT NOT NULL DEFAULT '',
+            status           TEXT NOT NULL,
+            events_found     INTEGER NOT NULL DEFAULT 0,
+            error_msg        TEXT NOT NULL DEFAULT '',
+            recorded_at      TEXT NOT NULL,
+            last_nonempty_at TEXT NOT NULL DEFAULT '',
             PRIMARY KEY (source, city)
         );
 
@@ -227,10 +246,11 @@ def cleanup_cache(ttl_days: int, ttl_following_days: int, is_following_fn: Calla
 
 
 def get_artist_metrics(artist_id: str) -> tuple[int, int, str] | None:
-    """Return (sc_followers, dc_want, recorded_at) or None."""
+    """Return oldest (sc_followers, dc_want, recorded_at) as baseline, or None."""
     conn = _get_conn()
     row = conn.execute(
-        "SELECT sc_followers, dc_want, recorded_at FROM artist_metrics_history WHERE artist_id = ?",
+        "SELECT sc_followers, dc_want, recorded_at FROM artist_metrics_history "
+        "WHERE artist_id = ? ORDER BY recorded_at ASC LIMIT 1",
         (str(artist_id),),
     ).fetchone()
     if row:
@@ -240,9 +260,15 @@ def get_artist_metrics(artist_id: str) -> tuple[int, int, str] | None:
 
 def save_artist_metrics(artist_id: str, sc_followers: int | None, dc_want: int | None) -> None:
     conn = _get_conn()
+    now = datetime.now().isoformat()
     conn.execute(
-        "INSERT OR REPLACE INTO artist_metrics_history (artist_id, sc_followers, dc_want, recorded_at) VALUES (?, ?, ?, ?)",
-        (str(artist_id), sc_followers, dc_want, datetime.now().isoformat()),
+        "INSERT OR IGNORE INTO artist_metrics_history (artist_id, sc_followers, dc_want, recorded_at) VALUES (?, ?, ?, ?)",
+        (str(artist_id), sc_followers, dc_want, now),
+    )
+    conn.execute(
+        "DELETE FROM artist_metrics_history WHERE artist_id = ? AND recorded_at NOT IN "
+        "(SELECT recorded_at FROM artist_metrics_history WHERE artist_id = ? ORDER BY recorded_at ASC LIMIT 5)",
+        (str(artist_id), str(artist_id)),
     )
     conn.commit()
 
@@ -261,7 +287,7 @@ def batch_save_enriched(items: list[tuple[str, dict[str, Any], int | None, int |
         [(str(aid), json.dumps(data, ensure_ascii=False, default=_json_default), now) for aid, data, _, _ in items],
     )
     conn.executemany(
-        "INSERT OR REPLACE INTO artist_metrics_history (artist_id, sc_followers, dc_want, recorded_at) VALUES (?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO artist_metrics_history (artist_id, sc_followers, dc_want, recorded_at) VALUES (?, ?, ?, ?)",
         [(str(aid), sc, dc, now) for aid, _, sc, dc in items],
     )
     conn.commit()
@@ -287,16 +313,17 @@ def record_found(line: str) -> None:
     with _found_lock:
         if _found_cache is None:
             _load_found_cache()
-        assert _found_cache is not None  # _load_found_cache always sets this
+        assert _found_cache is not None
         if line in _found_cache:
             return
         _found_cache.add(line)
-    conn = _get_conn()
-    try:
-        conn.execute("INSERT OR IGNORE INTO found_events (line) VALUES (?)", (line,))
-        conn.commit()
-    except sqlite3.Error as e:
-        logger.debug(f"record_found failed for line: {e}")
+        conn = _get_conn()
+        try:
+            conn.execute("INSERT OR IGNORE INTO found_events (line) VALUES (?)", (line,))
+            conn.commit()
+        except sqlite3.Error as e:
+            _found_cache.discard(line)
+            logger.debug(f"record_found failed for line: {e}")
 
 
 def get_all_found_lines() -> list[str]:
@@ -404,17 +431,48 @@ def record_scraper_health(
     error_msg: str = "",
 ) -> None:
     conn = _get_conn()
+    now = datetime.now().isoformat()
+    prev = conn.execute(
+        "SELECT last_nonempty_at FROM scraper_health WHERE source = ? AND city = ?",
+        (source, city),
+    ).fetchone()
+    prev_nonempty = prev["last_nonempty_at"] if prev else ""
+    last_nonempty = now if events_found > 0 else prev_nonempty
     conn.execute(
-        "INSERT OR REPLACE INTO scraper_health (source, city, status, events_found, error_msg, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (source, city, status, events_found, error_msg, datetime.now().isoformat()),
+        "INSERT OR REPLACE INTO scraper_health "
+        "(source, city, status, events_found, error_msg, recorded_at, last_nonempty_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (source, city, status, events_found, error_msg, now, last_nonempty),
     )
     conn.commit()
+
+
+def get_stale_scrapers(days: int = 14) -> list[dict[str, Any]]:
+    """Return scrapers that haven't returned events in `days` days."""
+    conn = _get_conn()
+    now_iso = datetime.now().isoformat()
+    rows = conn.execute(
+        "SELECT source, city, last_nonempty_at, recorded_at FROM scraper_health "
+        "WHERE last_nonempty_at != '' "
+        "AND julianday(?) - julianday(last_nonempty_at) >= ?",
+        (now_iso, days),
+    ).fetchall()
+    return [
+        {
+            "source": row["source"],
+            "city": row["city"],
+            "last_nonempty_at": row["last_nonempty_at"],
+            "days_since": int((datetime.fromisoformat(now_iso) - datetime.fromisoformat(row["last_nonempty_at"])).days),
+        }
+        for row in rows
+    ]
 
 
 def get_all_scraper_health() -> list[dict[str, Any]]:
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT source, city, status, events_found, error_msg, recorded_at FROM scraper_health ORDER BY recorded_at DESC"
+        "SELECT source, city, status, events_found, error_msg, recorded_at, last_nonempty_at "
+        "FROM scraper_health ORDER BY recorded_at DESC"
     ).fetchall()
     return [
         {
@@ -424,6 +482,7 @@ def get_all_scraper_health() -> list[dict[str, Any]]:
             "events_found": row["events_found"],
             "error_msg": row["error_msg"],
             "recorded_at": row["recorded_at"],
+            "last_nonempty_at": row["last_nonempty_at"],
         }
         for row in rows
     ]
@@ -534,5 +593,37 @@ def _json_default(obj: object) -> Any:
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-# Initialize on import
-init_db()
+def _migrate_metrics_schema() -> None:
+    """Migrate artist_metrics_history from single-row to multi-row schema."""
+    conn = _ensure_conn()
+    cols = [row["name"] for row in conn.execute("PRAGMA table_info(artist_metrics_history)").fetchall()]
+    if "artist_id" not in cols:
+        return
+    pk_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='artist_metrics_history'"
+    ).fetchone()
+    if pk_sql and "artist_id, recorded_at" not in pk_sql["sql"]:
+        conn.executescript("""
+            ALTER TABLE artist_metrics_history RENAME TO _old_metrics;
+            CREATE TABLE artist_metrics_history (
+                artist_id    TEXT NOT NULL,
+                sc_followers INTEGER,
+                dc_want      INTEGER,
+                recorded_at  TEXT NOT NULL,
+                PRIMARY KEY (artist_id, recorded_at)
+            );
+            INSERT OR IGNORE INTO artist_metrics_history
+                SELECT artist_id, sc_followers, dc_want, recorded_at FROM _old_metrics;
+            DROP TABLE _old_metrics;
+        """)
+        logger.info("Migrated artist_metrics_history to compound primary key")
+
+
+def _migrate_scraper_health_schema() -> None:
+    """Add last_nonempty_at column to scraper_health if missing."""
+    conn = _ensure_conn()
+    cols = [row["name"] for row in conn.execute("PRAGMA table_info(scraper_health)").fetchall()]
+    if "last_nonempty_at" not in cols and "source" in cols:
+        conn.execute("ALTER TABLE scraper_health ADD COLUMN last_nonempty_at TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+        logger.info("Added last_nonempty_at column to scraper_health")

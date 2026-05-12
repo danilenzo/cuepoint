@@ -5,9 +5,11 @@ import asyncio
 import dataclasses
 import hashlib
 import json
+import re
 import traceback
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -54,15 +56,19 @@ _RA_HEADERS = {
 CITIES = cfg.cities()
 
 
+_ra_client_lock = asyncio.Lock()
+
+
 async def _get_ra_client() -> httpx.AsyncClient:
     global _ra_client
-    if _ra_client is None or _ra_client.is_closed:
-        _ra_client = httpx.AsyncClient(
-            headers=_RA_HEADERS,
-            timeout=15.0,
-            follow_redirects=True,
-        )
-    return _ra_client
+    async with _ra_client_lock:
+        if _ra_client is None or _ra_client.is_closed:
+            _ra_client = httpx.AsyncClient(
+                headers=_RA_HEADERS,
+                timeout=15.0,
+                follow_redirects=True,
+            )
+        return _ra_client
 
 
 async def close_clients() -> None:
@@ -357,15 +363,17 @@ async def get_data(
         refreshed = await enrich_batch_phased(stale_ids, get_artist_urls, stats=stats)
         artist_lookup.update(refreshed)
 
+    flyer_urls = df.apply(lambda row: get_flyer(row.to_dict()), axis=1).tolist()
+    flyer_task = asyncio.create_task(embed_flyers(flyer_urls))
+
     _compute_similarity(artist_lookup)
     _compute_label_affinity(artist_lookup)
 
-    df["artists_info"] = [
-        [artist_lookup[a["id"]] for a in row["artists"] if a["id"] in artist_lookup] for _, row in df.iterrows()
-    ]
+    df["artists_info"] = df["artists"].apply(
+        lambda artists: [artist_lookup[a["id"]] for a in artists if a["id"] in artist_lookup]
+    )
     df["artists_list_info_past"] = [[] for _ in range(len(df))]
-    flyer_urls = [get_flyer(row.to_dict()) for _, row in df.iterrows()]
-    df["flyer"] = await embed_flyers(flyer_urls)
+    df["flyer"] = await flyer_task
 
     # Save scan snapshot for incremental mode
     if incremental_enabled and not df.empty:
@@ -485,9 +493,20 @@ def _record_enrichment_health(stats: ScanStats) -> None:
 
 
 async def run_for_city(
-    city_key: str, start_date: datetime, days_ahead: int, progress_cb: Callable[[dict[str, Any]], None] | None = None
+    city_key: str,
+    start_date: datetime,
+    days_ahead: int,
+    progress_cb: Callable[[dict[str, Any]], None] | None = None,
+    *,
+    full: bool = False,
+    on_sorted_df: Callable[[pd.DataFrame], None] | None = None,
 ) -> dict[str, Any]:
-    """Run the full pipeline for one city (async)."""
+    """Run the full pipeline for one city (async).
+
+    Args:
+        full: Clear scan snapshot before fetching (forces full re-enrichment).
+        on_sorted_df: Called with the scored DataFrame before HTML generation.
+    """
     area, city_name, city_slug = CITIES[city_key]
     ctx = ScanContext(
         area=area,
@@ -496,6 +515,9 @@ async def run_for_city(
         start_date=start_date,
         days_ahead=days_ahead,
     )
+
+    if full:
+        store.clear_scan_snapshot(city_name)
 
     def _cb(phase: str, detail: str = "", pct: float = 0.0) -> None:
         if progress_cb:
@@ -518,26 +540,31 @@ async def run_for_city(
         _find_and_record(df, ctx.city_name)
         filtered_data = filter_df(df)
         sorted_data = sort_df(filtered_data)
+        sorted_data["city_name"] = city_name
         stats.events_after_filter = len(sorted_data)
+
+        if on_sorted_df:
+            on_sorted_df(sorted_data)
 
         _cb("report", "Generating HTML report...", 0.92)
         stats.finish()
         _record_enrichment_health(stats)
+
+        stale = store.get_stale_scrapers()
+        for s in stale:
+            logger.warning(
+                f"Scraper '{s['source']}' ({s['city']}) has not returned events "
+                f"in {s['days_since']} days — may be broken"
+            )
         html_res = create_html(
             sorted_data, stats_html=stats.to_html_footer(), scraper_health=store.get_all_scraper_health()
         )
 
-        file_path = (
-            OUTPUT_PATH
-            + ctx.city_name
-            + " "
-            + ctx.start_date.strftime("%Y-%m-%d")
-            + " "
-            + str(ctx.days_ahead)
-            + ".html"
-        )
-        with open(file_path, "w", encoding="utf-8") as file:
-            file.write(html_res)
+        safe_city = re.sub(r"[^a-zA-Z0-9_-]", "_", ctx.city_name)
+        out_dir = Path(OUTPUT_PATH)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        file_path = out_dir / f"{safe_city}_{ctx.start_date:%Y-%m-%d}_{ctx.days_ahead}d.html"
+        file_path.write_text(html_res, encoding="utf-8")
         logger.info(f"Report saved: {file_path}")
 
         _cb("done", f"{len(sorted_data)} events found", 1.0)
@@ -545,7 +572,7 @@ async def run_for_city(
             "city": ctx.city_name,
             "events": len(sorted_data),
             "followed": int(sorted_data.get("_score", pd.Series()).gt(500_000).sum()),
-            "file_path": file_path,
+            "file_path": str(file_path),
         }
     except Exception as e:
         stats.record_error(str(e))
