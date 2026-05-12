@@ -629,13 +629,21 @@ async def run_cities_parallel(
 
 
 def run_for_city_sync(
-    city_key: str, start_date: datetime, days_ahead: int, progress_cb: Callable[[dict[str, Any]], None] | None = None
+    city_key: str,
+    start_date: datetime,
+    days_ahead: int,
+    progress_cb: Callable[[dict[str, Any]], None] | None = None,
+    *,
+    full: bool = False,
+    on_sorted_df: Callable[[pd.DataFrame], None] | None = None,
 ) -> dict[str, Any]:
     """Sync wrapper for run_for_city — used by CLI and GUI."""
 
     async def _main() -> dict[str, Any]:
         try:
-            return await run_for_city(city_key, start_date, days_ahead, progress_cb)
+            return await run_for_city(
+                city_key, start_date, days_ahead, progress_cb, full=full, on_sorted_df=on_sorted_df
+            )
         finally:
             await close_clients()
 
@@ -674,12 +682,40 @@ if __name__ == "__main__":
     parser.add_argument("--days", type=int, default=7, help="Number of days to fetch (default: 7)")
     parser.add_argument("--full", action="store_true", help="Force full re-scan, ignoring incremental cache")
     parser.add_argument("--parallel", type=int, default=1, help="Number of cities to scan concurrently (default: 1)")
+    parser.add_argument("--verbose", action="store_true", help="Print top events with score breakdown after scan")
     args = parser.parse_args()
 
     start_date = datetime.strptime(args.start, "%Y-%m-%d") if args.start else datetime.now()
 
     store.migrate_if_needed()
     cleanup_cache()
+
+    def _print_breakdown(df: pd.DataFrame) -> None:
+        if not args.verbose or df.empty:
+            return
+        top = df.head(10)
+        print(f"\n{'─' * 80}")
+        print(f"  TOP {len(top)} EVENTS — SCORE BREAKDOWN")
+        print(f"{'─' * 80}")
+        for _, row in top.iterrows():
+            score = row.get("_score", 0)
+            pct = row.get("_match_pct", 0)
+            title = row.get("title", "?")
+            venue = row.get("venue_name", "?")
+            date = row.get("event_date")
+            date_str = date.strftime("%b %d") if hasattr(date, "strftime") else str(date)[:10]
+            print(f"\n  {date_str}  {title}  @{venue}")
+            print(f"  Score: {score:,.0f}  ({pct}% match)")
+            bd = row.get("_score_breakdown", {})
+            if bd:
+                parts = sorted(bd.items(), key=lambda x: x[1], reverse=True)
+                for key, val in parts:
+                    if val:
+                        print(f"    {key:<20s} {val:>10,.0f}")
+            briefing = row.get("_briefing", [])
+            if briefing:
+                print(f"  Why: {' · '.join(briefing)}")
+        print(f"{'─' * 80}\n")
 
     with keep.running():
         if args.parallel > 1 and len(args.cities) > 1:
@@ -691,6 +727,6 @@ if __name__ == "__main__":
                 logger.info(f"  {r['city']}: {status}")
         else:
             for city in args.cities:
-                if args.full:
-                    store.clear_scan_snapshot(CITIES[city][1])
-                run_for_city_sync(city, start_date, args.days)
+                run_for_city_sync(
+                    city, start_date, args.days, full=args.full, on_sorted_df=_print_breakdown
+                )

@@ -45,15 +45,19 @@ _use_oauth: bool | None = None  # None = not yet determined
 _client_id: str | None = None
 
 
+_client_init_lock = asyncio.Lock()
+
+
 async def _get_client() -> httpx.AsyncClient:
     global _client
-    if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            headers={"User-Agent": "cuepoint/1.0"},
-            timeout=15.0,
-            follow_redirects=True,
-        )
-    return _client
+    async with _client_init_lock:
+        if _client is None or _client.is_closed:
+            _client = httpx.AsyncClient(
+                headers={"User-Agent": "cuepoint/1.0"},
+                timeout=15.0,
+                follow_redirects=True,
+            )
+        return _client
 
 
 async def close_client() -> None:
@@ -111,7 +115,7 @@ async def _ensure_auth() -> str:
                 _use_oauth = True
                 logger.info("SoundCloud: using OAuth (no rate limit)")
                 return "oauth"
-            except Exception as e:
+            except (httpx.HTTPError, ValueError, KeyError, RuntimeError) as e:
                 logger.warning(f"SoundCloud OAuth failed, falling back to client_id scraping: {e}")
 
         _use_oauth = False
@@ -140,7 +144,7 @@ _CLIENT_ID_PATTERNS = [
 async def _scrape_client_id() -> str:
     """Extract client_id from SoundCloud JS bundles (fallback method)."""
     client = await _get_client()
-    for attempt in range(3):
+    for _attempt in range(3):
         r = await client.get("https://soundcloud.com")
         r.raise_for_status()
         js_urls = list(dict.fromkeys(re.findall(r'https://[^"\']+\.js', r.text)))
@@ -166,34 +170,101 @@ async def _scrape_client_id() -> str:
 # API helpers
 # ---------------------------------------------------------------------------
 
-# Rate limiting only used for fallback client_id mode
-_rate_lock = asyncio.Lock()
-_last_request = 0.0
-_MIN_INTERVAL = 0.5
-_backoff_until = 0.0
-_total_403s = 0
-_total_requests = 0
-_consecutive_403s = 0
-_circuit_open = False
-_last_client_id_refresh = 0.0
-
-_CIRCUIT_BREAKER_RATIO = 0.6
-_CIRCUIT_BREAKER_MIN_REQUESTS = 8
-_MAX_BACKOFF = 30.0
-_BASE_BACKOFF = 3.0
-_CLIENT_ID_REFRESH_COOLDOWN = 60.0
-
-
 class SCCircuitOpen(Exception):
     """Raised when too many 403s trip the circuit breaker."""
+
+
+class _CircuitBreaker:
+    """Tracks 403 failure ratio and trips when threshold is exceeded."""
+
+    def __init__(self, ratio: float = 0.6, min_requests: int = 8) -> None:
+        self._lock = asyncio.Lock()
+        self._ratio = ratio
+        self._min_requests = min_requests
+        self._total_403s = 0
+        self._total_requests = 0
+        self._is_open = False
+
+    async def check(self) -> None:
+        async with self._lock:
+            if self._is_open:
+                raise SCCircuitOpen("SC circuit breaker open — too many 403s")
+
+    async def record_success(self) -> None:
+        async with self._lock:
+            self._total_requests += 1
+
+    async def record_failure(self) -> None:
+        async with self._lock:
+            self._total_requests += 1
+            self._total_403s += 1
+            if self._total_requests >= self._min_requests and self._total_403s / self._total_requests >= self._ratio:
+                self._is_open = True
+                logger.warning(
+                    f"SC circuit breaker tripped: {self._total_403s}/{self._total_requests} "
+                    f"requests got 403 — skipping remaining SC enrichment"
+                )
+                raise SCCircuitOpen(
+                    f"SC circuit breaker open: {self._total_403s}/{self._total_requests} requests failed"
+                )
+
+    async def reset(self) -> None:
+        async with self._lock:
+            self._total_403s = 0
+            self._total_requests = 0
+            self._is_open = False
+
+
+class _RateLimiter:
+    """Enforces minimum interval between requests with backoff support."""
+
+    def __init__(self, min_interval: float = 0.5, base_backoff: float = 3.0, max_backoff: float = 30.0) -> None:
+        self._lock = asyncio.Lock()
+        self._min_interval = min_interval
+        self._base_backoff = base_backoff
+        self._max_backoff = max_backoff
+        self._last_request = 0.0
+        self._consecutive_fails = 0
+
+    async def wait(self) -> None:
+        async with self._lock:
+            now = time.monotonic()
+            wait = self._min_interval - (now - self._last_request)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._last_request = time.monotonic()
+
+    async def backoff(self) -> None:
+        async with self._lock:
+            self._consecutive_fails += 1
+            delay = min(self._base_backoff * (2 ** (self._consecutive_fails - 1)), self._max_backoff)
+            delay += random.uniform(0, delay * 0.3)
+        logger.debug(f"SC 403 — backoff {delay:.1f}s")
+        await asyncio.sleep(delay)
+        async with self._lock:
+            self._last_request = time.monotonic()
+
+    async def record_success(self) -> None:
+        async with self._lock:
+            self._consecutive_fails = 0
+
+    async def reset(self) -> None:
+        async with self._lock:
+            self._last_request = 0.0
+            self._consecutive_fails = 0
+
+
+_breaker = _CircuitBreaker()
+_limiter = _RateLimiter()
+_CLIENT_ID_REFRESH_COOLDOWN = 60.0
+_last_client_id_refresh = 0.0
+_refresh_lock = asyncio.Lock()
 
 
 @async_retry_on_failure(max_retries=2, base_delay=2.0)
 async def _api_get(url: str, params: dict[str, Any] | None = None, timeout: float = 15.0) -> httpx.Response:
     """Unified GET — uses OAuth header or client_id param depending on auth mode."""
-    global _last_request, _backoff_until, _client_id
-    global _total_403s, _total_requests, _circuit_open
-    global _consecutive_403s, _last_client_id_refresh
+    global _client_id, _last_client_id_refresh
 
     auth_mode = await _ensure_auth()
     client = await _get_client()
@@ -208,105 +279,47 @@ async def _api_get(url: str, params: dict[str, Any] | None = None, timeout: floa
             r = await client.get(url, params=params, headers=headers, timeout=timeout)
         r.raise_for_status()
         return r
-    else:
-        async with _rate_lock:
-            if _circuit_open:
-                raise SCCircuitOpen("SC circuit breaker open — too many 403s")
 
-        if params is None:
-            params = {}
-        params["client_id"] = _client_id
+    await _breaker.check()
+    params = dict(params) if params else {}
+    params["client_id"] = _client_id
+    await _limiter.wait()
 
-        async with _rate_lock:
-            now = time.monotonic()
-            if now < _backoff_until:
-                await asyncio.sleep(_backoff_until - now)
-            now = time.monotonic()
-            wait = _MIN_INTERVAL - (now - _last_request)
-            if wait > 0:
-                await asyncio.sleep(wait)
-            _last_request = time.monotonic()
-            _total_requests += 1
-
-        r = await client.get(url, params=params, timeout=timeout)
-        if r.status_code == 403:
-            should_refresh = False
-            async with _rate_lock:
-                _total_403s += 1
-                _consecutive_403s += 1
-
-                now = time.monotonic()
-                if now - _last_client_id_refresh >= _CLIENT_ID_REFRESH_COOLDOWN:
-                    should_refresh = True
-                    _last_client_id_refresh = now
-
-                if (
-                    _total_requests >= _CIRCUIT_BREAKER_MIN_REQUESTS
-                    and _total_403s / _total_requests >= _CIRCUIT_BREAKER_RATIO
-                ):
-                    _circuit_open = True
-                    logger.warning(
-                        f"SC circuit breaker tripped: {_total_403s}/{_total_requests} "
-                        f"requests got 403 — skipping remaining SC enrichment"
-                    )
-                    raise SCCircuitOpen(
-                        f"SC circuit breaker open: {_total_403s}/{_total_requests} requests failed"
-                    )
-
-            if should_refresh:
-                try:
-                    new_id = await _scrape_client_id()
-                    async with _rate_lock:
-                        _client_id = new_id
-                    params["client_id"] = new_id
-                    logger.debug("SC 403 — refreshed client_id")
-                except Exception:
-                    pass
-
-            backoff = min(_BASE_BACKOFF * (2 ** (_consecutive_403s - 1)), _MAX_BACKOFF)
-            jitter = random.uniform(0, backoff * 0.3)
-            delay = backoff + jitter
-            logger.debug(f"SC 403 #{_total_403s} — backoff {delay:.1f}s")
-            await asyncio.sleep(delay)
-            async with _rate_lock:
-                _backoff_until = time.monotonic()
-                _last_request = _backoff_until
-            r = await client.get(url, params=params, timeout=timeout)
-            async with _rate_lock:
-                if r.status_code == 403:
-                    _total_403s += 1
-                    _consecutive_403s += 1
-                    if (
-                        _total_requests >= _CIRCUIT_BREAKER_MIN_REQUESTS
-                        and _total_403s / _total_requests >= _CIRCUIT_BREAKER_RATIO
-                    ):
-                        _circuit_open = True
-                        logger.warning(
-                            f"SC circuit breaker tripped: {_total_403s}/{_total_requests} "
-                            f"requests got 403 — skipping remaining SC enrichment"
-                        )
-                        raise SCCircuitOpen(
-                            f"SC circuit breaker open: {_total_403s}/{_total_requests} requests failed"
-                        )
-                else:
-                    _consecutive_403s = 0
-        else:
-            async with _rate_lock:
-                _consecutive_403s = 0
-
+    r = await client.get(url, params=params, timeout=timeout)
+    if r.status_code != 403:
+        await _breaker.record_success()
+        await _limiter.record_success()
         r.raise_for_status()
         return r
 
+    # 403 — record failure, maybe refresh client_id, backoff, retry once
+    await _breaker.record_failure()
 
-def reset_circuit_breaker() -> None:
-    """Reset the circuit breaker for a new scan batch."""
-    global _total_403s, _total_requests, _circuit_open
-    global _consecutive_403s, _last_client_id_refresh
-    _total_403s = 0
-    _total_requests = 0
-    _circuit_open = False
-    _consecutive_403s = 0
-    _last_client_id_refresh = 0.0
+    async with _refresh_lock:
+        now = time.monotonic()
+        if now - _last_client_id_refresh >= _CLIENT_ID_REFRESH_COOLDOWN:
+            _last_client_id_refresh = now
+            try:
+                _client_id = await _scrape_client_id()
+                params["client_id"] = _client_id
+                logger.debug("SC 403 — refreshed client_id")
+            except (httpx.HTTPError, ValueError, RuntimeError):
+                pass
+
+    await _limiter.backoff()
+    r = await client.get(url, params=params, timeout=timeout)
+    if r.status_code == 403:
+        await _breaker.record_failure()
+    else:
+        await _limiter.record_success()
+    r.raise_for_status()
+    return r
+
+
+async def reset_circuit_breaker() -> None:
+    """Reset rate limiter and circuit breaker for a new scan batch."""
+    await _breaker.reset()
+    await _limiter.reset()
 
 
 def is_oauth() -> bool:
@@ -343,7 +356,7 @@ async def search_sc_by_name(name: str) -> str | None:
                 or _normalize_alnum(user.get("full_name", "")) == norm_name
             ):
                 return str(user.get("permalink_url")) if user.get("permalink_url") else None
-    except Exception as e:
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         logger.warning(f"SC name search failed for '{name}': {e}")
     return None
 
@@ -395,7 +408,7 @@ async def populate_sc_info(artist_info: dict[str, Any]) -> dict[str, Any]:
         artist_info.setdefault("sc_tags", json.dumps([]))
         artist_info.setdefault("sc_followers", None)
         artist_info.setdefault("sc_following", None)
-    except Exception as e:
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         logger.warning(f"SC API failed for '{artist_info.get('name')}': {e}")
         artist_info.setdefault("sc_tags", json.dumps([]))
         artist_info.setdefault("sc_followers", None)

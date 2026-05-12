@@ -15,6 +15,16 @@ from .tag_utils import parse_artist_tags
 _VUE_PATH = Path(__file__).parent / "vendor" / "vue.global.prod.js"
 _TEMPLATE_PATH = Path(__file__).parent / "templates" / "report.html"
 
+_SAFE_URL_SCHEMES = ("http://", "https://", "/")
+
+
+def _safe_href(url: str) -> str:
+    """Escape a URL for use in an href attribute, blocking javascript: and data: schemes."""
+    stripped = url.strip()
+    if not any(stripped.startswith(s) for s in _SAFE_URL_SCHEMES):
+        return "#"
+    return html.escape(stripped)
+
 
 def df_to_time(row: Any) -> str:
     date = row["start_time"].strftime("%b %d, %Y").replace(" 0", " ")
@@ -27,7 +37,7 @@ def df_to_venue(row: Any) -> str:
     if not venue_url or not isinstance(venue_url, str):
         return "NO_VENUE"
     # RA events store a relative path; club events store a full URL
-    link = html.escape(venue_url if venue_url.startswith("http") else RA + venue_url)
+    link = _safe_href(venue_url if venue_url.startswith("http") else RA + venue_url)
     title = html.escape(row["venue_name"])
     return f"""<a href="{link}">{title}</a>"""
 
@@ -77,48 +87,53 @@ def _normalize_genre(name: str) -> str | None:
     return stripped.title()
 
 
-def df_to_genre(row: Any) -> str:
-    raw = []
-    for artist in row["artists_info"]:
+def _categorize_genre(name: str) -> str:
+    low = name.lower()
+    if "techno" in low:
+        return "techno"
+    if "bass" in low or "dnb" in low or "drum" in low:
+        return "dnb"
+    if "house" in low:
+        return "house"
+    if "ambient" in low or "dub" in low:
+        return "ambient"
+    if "industrial" in low or "ebm" in low or "noise" in low:
+        return "industrial"
+    return "default"
+
+
+def _collect_genre_counts(row: Any) -> tuple[list[tuple[str, int, str]], int]:
+    """Extract normalized, counted, categorized genres from an event row.
+
+    Returns (top_genres, extra_count) where each genre is (name, count, category).
+    """
+    raw: list[str] = []
+    for artist in row.get("artists_info") or []:
         if artist is not None:
             raw.extend(parse_artist_tags(artist))
-
-    for genre in row["genres"]:
+    for genre in row.get("genres") or []:
         raw.append(genre["name"])
 
-    # Normalize, deduplicate, count
     counts: Counter[str] = Counter()
     for g in raw:
         norm = _normalize_genre(g)
         if norm:
             counts[norm] += 1
 
-    # Drop singletons, sort by count, take top N
     filtered = {g: c for g, c in counts.items() if c >= 2}
     if not filtered:
-        filtered = dict(counts)  # fallback: show all if everything is a singleton
+        filtered = dict(counts)
     top = sorted(filtered.items(), key=lambda x: x[1], reverse=True)[:_MAX_GENRES]
-
     extra = len(filtered) - len(top)
-    parts = []
-    for g, c in top:
-        low = g.lower()
-        if "techno" in low:
-            cls = "techno"
-        elif "bass" in low or "dnb" in low or "drum" in low:
-            cls = "dnb"
-        elif "house" in low:
-            cls = "house"
-        elif "ambient" in low or "dub" in low:
-            cls = "ambient"
-        elif "industrial" in low or "ebm" in low or "noise" in low:
-            cls = "industrial"
-        else:
-            cls = "default"
-        parts.append(f'<span class="genre-pill {cls}">{html.escape(g)} {c}</span>')
+
+    return [(g, c, _categorize_genre(g)) for g, c in top], extra
+
+
+def df_to_genre(row: Any) -> str:
+    top, extra = _collect_genre_counts(row)
+    parts = [f'<span class="genre-pill {cat}">{html.escape(g)} {c}</span>' for g, c, cat in top]
     if extra > 0:
         parts.append(f'<span class="genre-more">+{extra}</span>')
-
     return " ".join(parts)
 
 
@@ -135,7 +150,7 @@ def df_to_lineup(row: Any) -> str:
             name = html.escape(artist_info.get("name", ""))
             sc_url = artist_info.get("soundcloud")
             if sc_url is not None:
-                sc_url_esc = html.escape(sc_url)
+                sc_url_esc = _safe_href(sc_url)
                 if is_following(sc_url):
                     res = res + f'<a href="{sc_url_esc}"><b>{name}</b></a> '
                 else:
@@ -158,7 +173,7 @@ def df_to_lineup(row: Any) -> str:
             if artist_info.get("bc_supporters"):
                 bc_sup = html.escape(str(artist_info["bc_supporters"]))
                 if artist_info.get("bandcamp"):
-                    bc_url = html.escape(artist_info["bandcamp"])
+                    bc_url = _safe_href(artist_info["bandcamp"])
                     stats.append(f'<a href="{bc_url}">BC</a>: <font color="red">{bc_sup}</font>')
                 else:
                     stats.append(f'BC: <font color="red">{bc_sup}</font>')
@@ -217,7 +232,7 @@ def _plain_lineup(row: Any) -> str:
 
 
 def df_to_title(row: Any) -> str:
-    link = html.escape(row["event_url"])
+    link = _safe_href(row["event_url"])
     title = html.escape(row["title"])
     return f'<button class="cal-btn" title="Download .ics">&#128197;</button> <a href="{link}">{title}</a>'
 
@@ -227,7 +242,7 @@ def df_to_promoters(row: Any) -> str:
 
     promoters_str = ""
     for promoter in promoters:
-        link = html.escape(RA + promoter["contentUrl"])
+        link = _safe_href(RA + promoter["contentUrl"])
         title = html.escape(promoter["name"])
         promoters_str = promoters_str + f"""<a href="{link}">{title}</a>"""
         promoters_str = promoters_str + "<br></br>"
@@ -240,11 +255,11 @@ def df_to_flyer(row: Any) -> str:
     if not pic or (isinstance(pic, float) and pic != pic):
         return ""
 
-    return f"""<img src="{pic}" alt="Image" style="width:100%; height:auto;">"""
+    return f"""<img src="{html.escape(pic)}" alt="Image" style="width:100%; height:auto;">"""
 
 
 def df_to_attenders(row: Any) -> int:
-    return int(row["attending"])
+    return _safe_int(row["attending"])
 
 
 def df_to_strength(row: Any) -> str:
@@ -396,14 +411,17 @@ def _artist_to_dict(a: dict[str, Any] | None) -> dict[str, Any] | None:
     if a is None:
         return None
     sc_url = a.get("soundcloud")
-    tags: set[str] = set()
-    for key in ("sc_tags", "dc_styles", "bc_tags"):
-        raw = a.get(key)
-        if raw:
-            try:
-                tags.update(t for t in json.loads(raw) if t)
-            except (json.JSONDecodeError, TypeError):
-                pass
+    if "_parsed_tag_set" in a:
+        tags = a["_parsed_tag_set"]
+    else:
+        tags = set()
+        for key in ("sc_tags", "dc_styles", "bc_tags"):
+            raw = a.get(key)
+            if raw:
+                try:
+                    tags.update(t for t in json.loads(raw) if t)
+                except (json.JSONDecodeError, TypeError):
+                    pass
 
     return {
         "name": a.get("name", ""),
@@ -429,48 +447,9 @@ def _artist_to_dict(a: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _genre_counts(row: Any) -> list[dict[str, Any]]:
-    """Extract normalized genre counts for an event row."""
-    raw = []
-    for artist in row.get("artists_info", []):
-        if artist is not None:
-            for key in ("sc_tags", "dc_styles", "bc_tags"):
-                if key in artist:
-                    try:
-                        raw.extend(json.loads(artist[key]))
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-    for g in row.get("genres", []):
-        raw.append(g["name"])
-
-    counts: Counter[str] = Counter()
-    for g in raw:
-        norm = _normalize_genre(g)
-        if norm:
-            counts[norm] += 1
-
-    filtered = {g: c for g, c in counts.items() if c >= 2}
-    if not filtered:
-        filtered = dict(counts)
-    top = sorted(filtered.items(), key=lambda x: x[1], reverse=True)[:_MAX_GENRES]
-
-    result = []
-    for g, c in top:
-        low = g.lower()
-        if "techno" in low:
-            cat = "techno"
-        elif "bass" in low or "dnb" in low or "drum" in low:
-            cat = "dnb"
-        elif "house" in low:
-            cat = "house"
-        elif "ambient" in low or "dub" in low:
-            cat = "ambient"
-        elif "industrial" in low or "ebm" in low or "noise" in low:
-            cat = "industrial"
-        else:
-            cat = "default"
-        result.append({"name": g, "count": c, "category": cat})
-    return result
+    """Extract normalized genre counts for an event row (Vue JSON format)."""
+    top, _ = _collect_genre_counts(row)
+    return [{"name": g, "count": c, "category": cat} for g, c, cat in top]
 
 
 def _df_to_json(df: Any) -> list[dict[str, Any]]:
