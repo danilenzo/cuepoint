@@ -12,6 +12,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
+import httpx
 from loguru import logger
 
 from . import config as cfg
@@ -22,6 +23,8 @@ from .discovery import check_rising
 from .following import is_following
 from .sc import is_oauth, populate_sc_info, reset_circuit_breaker, search_sc_by_name
 from .stats import ScanStats
+from .tag_utils import materialize_tags
+from .types import ArtistInfo
 
 # ---------------------------------------------------------------------------
 # Cache helpers
@@ -32,7 +35,7 @@ CACHE_TTL_FOLLOWING_DAYS = cfg.cache_ttl_following_days()
 CACHE_STALE_DAYS = cfg.cache_stale_days()
 
 
-def get_cached_artist(artist_id: str | int) -> dict[str, Any] | None:
+def get_cached_artist(artist_id: str | int) -> ArtistInfo | None:
     result = store.get_cached_artist(str(artist_id))
     if result is None:
         return None
@@ -45,6 +48,7 @@ def get_cached_artist(artist_id: str | int) -> dict[str, Any] | None:
     if sc_url and data.get("sc_followers") is None:
         if (datetime.now() - cached_at).days >= 1:
             return None
+    materialize_tags(data)
     return data
 
 
@@ -58,7 +62,7 @@ def is_cache_stale(artist_id: str | int) -> bool:
     return (datetime.now() - cached_at).days >= CACHE_STALE_DAYS
 
 
-def save_cached_artist(artist_id: str | int, artist_info: dict[str, Any]) -> None:
+def save_cached_artist(artist_id: str | int, artist_info: ArtistInfo) -> None:
     store.save_cached_artist(str(artist_id), artist_info)
 
 
@@ -72,11 +76,11 @@ def cleanup_cache() -> None:
 
 
 async def _run_enrichment_phases(
-    to_enrich: list[tuple[str, dict[str, Any]]],
+    to_enrich: list[tuple[str, ArtistInfo]],
     progress_cb: Callable[[str, str, float], None] | None = None,
     label: str = "",
     stats: ScanStats | None = None,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, ArtistInfo]:
     """Run the SC → Discogs → Bandcamp → rising → save pipeline on a list of (aid, info) pairs.
 
     Uses asyncio.Semaphore for concurrency control within each phase (replaces ThreadPoolExecutor).
@@ -90,14 +94,14 @@ async def _run_enrichment_phases(
     t0 = time.monotonic()
 
     # Phase: SoundCloud
-    reset_circuit_breaker()
+    await reset_circuit_breaker()
     sc_concurrency = 3 if is_oauth() else 1
     sc_sem = asyncio.Semaphore(sc_concurrency)
     logger.info(f"  SC enrichment for {total} {label}artists ({sc_concurrency} concurrent)...")
     _cb("enrich_sc", f"SoundCloud: 0/{total}", 0.0)
     sc_done = 0
 
-    async def _sc(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+    async def _sc(item: tuple[str, ArtistInfo]) -> tuple[str, ArtistInfo]:
         nonlocal sc_done
         aid, info = item
         async with sc_sem:
@@ -105,7 +109,7 @@ async def _run_enrichment_phases(
                 info = await populate_sc_info(info)
                 if stats:
                     stats.increment(sc_ok=1)
-            except Exception as e:
+            except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError, TypeError) as e:
                 logger.warning(f"SC failed for '{info.get('name')}': {e}")
                 if stats:
                     stats.increment(sc_fail=1)
@@ -123,7 +127,7 @@ async def _run_enrichment_phases(
     _cb("enrich_discogs", f"Discogs: 0/{dc_total}", 0.25)
     dc_done = 0
 
-    async def _dc(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+    async def _dc(item: tuple[str, ArtistInfo]) -> tuple[str, ArtistInfo]:
         nonlocal dc_done
         aid, info = item
         async with dc_sem:
@@ -131,7 +135,7 @@ async def _run_enrichment_phases(
                 info = await populate_discogs_info(info)
                 if stats:
                     stats.increment(dc_ok=1)
-            except Exception as e:
+            except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError, TypeError) as e:
                 logger.warning(f"Discogs failed for '{info.get('name')}': {e}")
                 if stats:
                     stats.increment(dc_fail=1)
@@ -151,7 +155,7 @@ async def _run_enrichment_phases(
     _cb("enrich_bandcamp", f"Bandcamp: 0/{bc_total}", 0.65)
     bc_done = 0
 
-    async def _bc(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+    async def _bc(item: tuple[str, ArtistInfo]) -> tuple[str, ArtistInfo]:
         nonlocal bc_done
         aid, info = item
         async with bc_sem:
@@ -159,7 +163,7 @@ async def _run_enrichment_phases(
                 info = await populate_bandcamp_info(info)
                 if stats:
                     stats.increment(bc_ok=1)
-            except Exception as e:
+            except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError, TypeError) as e:
                 logger.warning(f"Bandcamp failed for '{info.get('name')}': {e}")
                 if stats:
                     stats.increment(bc_fail=1)
@@ -178,10 +182,10 @@ async def _run_enrichment_phases(
         f"Bandcamp={t_bc - t_dc:.0f}s, total={t_bc - t0:.0f}s"
     )
 
-    # Phase: rising check + batch cache save
+    # Phase: rising check + batch cache save + materialize tags
     _cb("saving", "Saving to cache...", 0.95)
-    results: dict[str, dict[str, Any]] = {}
-    batch_items: list[tuple[str, dict[str, Any], int | None, int | None]] = []
+    results: dict[str, ArtistInfo] = {}
+    batch_items: list[tuple[str, ArtistInfo, int | None, int | None]] = []
     for aid, info in to_enrich:
         check_rising(aid, info, save=False)
         sc_val = int(info["sc_followers"]) if info.get("sc_followers") is not None else None
@@ -190,6 +194,9 @@ async def _run_enrichment_phases(
         results[aid] = info
 
     store.batch_save_enriched(batch_items)
+
+    for info in results.values():
+        materialize_tags(info)
 
     return results
 
@@ -201,31 +208,31 @@ async def _run_enrichment_phases(
 
 async def get_artist_info_by_ra_id(
     artist_id: str | int, get_artist_urls_fn: Callable[[str | int], Any]
-) -> dict[str, Any] | None:
+) -> ArtistInfo | None:
     """Single-artist enrichment (used by stale refresh and club fallback)."""
     cached = get_cached_artist(artist_id)
     if cached is not None:
         logger.info(f"Cache hit for artist {artist_id}")
         return cached
 
-    artist_info: dict[str, Any] | None = await get_artist_urls_fn(artist_id)
+    artist_info: ArtistInfo | None = await get_artist_urls_fn(artist_id)
     if artist_info is None:
         logger.warning(f"RA returned no data for artist {artist_id}, skipping enrichment")
         return None
 
     try:
         artist_info = await populate_sc_info(artist_info)
-    except Exception as e:
+    except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError, TypeError) as e:
         logger.warning(f"SC failed for '{artist_info.get('name')}': {e}")
 
     try:
         artist_info = await populate_discogs_info(artist_info)
-    except Exception as e:
+    except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError, TypeError) as e:
         logger.warning(f"Discogs failed for '{artist_info.get('name')}': {e}")
 
     try:
         artist_info = await populate_bandcamp_info(artist_info)
-    except Exception as e:
+    except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError, TypeError) as e:
         logger.warning(f"Bandcamp failed for '{artist_info.get('name')}': {e}")
 
     check_rising(artist_id, artist_info)
@@ -245,7 +252,7 @@ async def enrich_batch_phased(
     pct_base: float = 0.1,
     pct_range: float = 0.6,
     stats: ScanStats | None = None,
-) -> dict[str | int, dict[str, Any]]:
+) -> dict[str | int, ArtistInfo]:
     """Enrich a batch of artist IDs using async concurrency.
 
     Phase 1: URL resolution + cache check (concurrent)
@@ -255,7 +262,7 @@ async def enrich_batch_phased(
     t_resolve_start = time.monotonic()
     resolve_sem = asyncio.Semaphore(cfg.max_workers())
 
-    async def _resolve(aid: str | int) -> tuple[str | int, dict[str, Any] | None, bool]:
+    async def _resolve(aid: str | int) -> tuple[str | int, ArtistInfo | None, bool]:
         cached = get_cached_artist(aid)
         if cached is not None:
             return aid, cached, True
@@ -269,8 +276,8 @@ async def enrich_batch_phased(
         f"URL resolution + cache check: {time.monotonic() - t_resolve_start:.0f}s for {len(artist_ids)} artists"
     )
 
-    results: dict[str | int, dict[str, Any]] = {}
-    to_enrich: list[tuple[str, dict[str, Any]]] = []
+    results: dict[str | int, ArtistInfo] = {}
+    to_enrich: list[tuple[str, ArtistInfo]] = []
     cache_hits = 0
     ra_misses = 0
     for aid, info, was_cached in resolved:
@@ -306,12 +313,10 @@ async def enrich_batch_phased(
 # ---------------------------------------------------------------------------
 
 
-async def enrich_club_batch_phased(
-    stubs: list[dict[str, Any]], stats: ScanStats | None = None
-) -> dict[str, dict[str, Any]]:
+async def enrich_club_batch_phased(stubs: list[ArtistInfo], stats: ScanStats | None = None) -> dict[str, ArtistInfo]:
     """Phased enrichment for club artist stubs (SC name search + 3-source pipeline)."""
-    results: dict[str, dict[str, Any]] = {}
-    to_enrich: list[tuple[str, dict[str, Any]]] = []
+    results: dict[str, ArtistInfo] = {}
+    to_enrich: list[tuple[str, ArtistInfo]] = []
     for stub in stubs:
         cached = get_cached_artist(stub["id"])
         if cached is not None:
@@ -325,7 +330,7 @@ async def enrich_club_batch_phased(
     # Phase 1: SC name search for stubs missing SC URL
     sc_resolve_sem = asyncio.Semaphore(3)
 
-    async def _sc_resolve(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+    async def _sc_resolve(item: tuple[str, ArtistInfo]) -> tuple[str, ArtistInfo]:
         aid, info = item
         if not info.get("soundcloud"):
             async with sc_resolve_sem:

@@ -25,6 +25,7 @@ import httpx
 from loguru import logger
 
 from .following import is_following
+from .types import ArtistInfo
 from .fuzzy_match import _normalize_alnum
 from .generic import BASE_PATH
 from .http_utils import async_retry_on_failure
@@ -361,7 +362,7 @@ async def search_sc_by_name(name: str) -> str | None:
     return None
 
 
-async def populate_sc_info(artist_info: dict[str, Any]) -> dict[str, Any]:
+async def populate_sc_info(artist_info: ArtistInfo) -> ArtistInfo:
     sc_url = artist_info.get("soundcloud")
     if not sc_url:
         return artist_info

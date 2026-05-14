@@ -15,6 +15,7 @@ import asyncio
 import json
 import os
 import re
+import stat
 import time
 from typing import Any
 
@@ -24,6 +25,7 @@ from loguru import logger
 from . import config as cfg
 from .generic import BASE_PATH
 from .http_utils import async_retry_on_failure
+from .types import ArtistInfo
 
 # ---------------------------------------------------------------------------
 # Client & auth
@@ -35,12 +37,25 @@ _client_init_lock = asyncio.Lock()
 
 
 def _load_token() -> str | None:
-    """Try .discogs_token file first, then env var."""
+    """Try DISCOGS_TOKEN env var first (preferred), then .discogs_token file."""
+    env_token = os.environ.get("DISCOGS_TOKEN")
+    if env_token:
+        return env_token
     if _TOKEN_FILE.exists():
+        try:
+            mode = _TOKEN_FILE.stat().st_mode
+            if mode & (stat.S_IRGRP | stat.S_IROTH):
+                logger.warning(
+                    "Discogs token file is readable by group/others. "
+                    "Run: chmod 600 .discogs_token — or use DISCOGS_TOKEN env var instead."
+                )
+        except OSError:
+            pass
         token = _TOKEN_FILE.read_text(encoding="utf-8").strip()
         if token:
+            logger.info("Discogs: loaded token from file. Prefer DISCOGS_TOKEN env var for production.")
             return token
-    return os.environ.get("DISCOGS_TOKEN")
+    return None
 
 
 async def _get_client() -> httpx.AsyncClient:
@@ -168,7 +183,7 @@ async def _resolve_artist_id(discogs_url: str) -> int | None:
 # ---------------------------------------------------------------------------
 
 
-async def populate_discogs_info(artist_info: dict[str, Any]) -> dict[str, Any]:
+async def populate_discogs_info(artist_info: ArtistInfo) -> ArtistInfo:
     url = artist_info.get("discogs")
     if not url:
         return artist_info
@@ -182,6 +197,7 @@ async def populate_discogs_info(artist_info: dict[str, Any]) -> dict[str, Any]:
         _max_masters = cfg.discogs_max_masters()
         masters = []
         labels: set[str] = set()
+        styles: set[str] = set()
         page = 1
         while True:
             data = await _api_get(
@@ -197,10 +213,15 @@ async def populate_discogs_info(artist_info: dict[str, Any]) -> dict[str, Any]:
                 lbl = rel.get("label")
                 if lbl:
                     labels.add(lbl)
+                rel_styles = rel.get("style")
+                if rel_styles and isinstance(rel_styles, list):
+                    styles.update(rel_styles)
                 if rel.get("type") == "master":
                     masters.append(rel)
             pages = data.get("pagination", {}).get("pages", 1)
             if len(masters) >= _max_masters or page >= pages:
+                break
+            if len(labels) >= 20 and len(masters) >= _max_masters:
                 break
             page += 1
 
@@ -218,16 +239,16 @@ async def populate_discogs_info(artist_info: dict[str, Any]) -> dict[str, Any]:
             masters, key=lambda m: m.get("stats", {}).get("community", {}).get("in_collection", 0), reverse=True
         )[: cfg.discogs_max_masters()]
 
-        styles: set[str] = set()
-        for m in sorted_masters:
-            master_id = m["id"]
-            try:
-                master_data = await _api_get(f"https://api.discogs.com/masters/{master_id}")
-                styles.update(master_data.get("styles", []))
-                if len(styles) >= 4:
-                    break
-            except Exception as e:
-                logger.warning(f"Discogs master {master_id} failed: {e}")
+        if len(styles) < 4:
+            for m in sorted_masters:
+                master_id = m["id"]
+                try:
+                    master_data = await _api_get(f"https://api.discogs.com/masters/{master_id}")
+                    styles.update(master_data.get("styles", []))
+                    if len(styles) >= 4:
+                        break
+                except (httpx.HTTPError, ValueError, KeyError) as e:
+                    logger.warning(f"Discogs master {master_id} failed: {e}")
 
         total_haves = sum(haves)
         total_wants = sum(wants)
@@ -240,7 +261,7 @@ async def populate_discogs_info(artist_info: dict[str, Any]) -> dict[str, Any]:
         if labels:
             artist_info["dc_labels"] = json.dumps(list(labels))
 
-    except Exception as e:
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         logger.warning(f"Discogs enrichment failed for '{artist_info.get('name')}': {e}")
 
     return artist_info

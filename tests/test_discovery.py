@@ -67,14 +67,14 @@ class TestComputeSimilarity:
             "a1": {
                 "name": "Followed DJ",
                 "soundcloud": "/followed",
-                "sc_tags": json.dumps(["Techno", "Industrial"]),
+                "sc_tags": json.dumps(["Techno", "Industrial", "Ambient"]),
                 "dc_styles": json.dumps([]),
                 "bc_tags": json.dumps([]),
             },
             "a2": {
                 "name": "Similar DJ",
                 "soundcloud": "/other",
-                "sc_tags": json.dumps(["Techno", "Industrial", "Dark"]),
+                "sc_tags": json.dumps(["Techno", "Industrial", "Ambient", "Dark"]),
                 "dc_styles": json.dumps([]),
                 "bc_tags": json.dumps([]),
             },

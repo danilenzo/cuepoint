@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cuepoint"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Electronic music event scanner — fetches RA.co events, enriches artists via SoundCloud/Discogs/Bandcamp, filters and ranks by genre."
 requires-python = ">=3.12"
 dependencies = [
@@ -13,6 +13,8 @@ dependencies = [
     "lxml>=6.0.2",
     "numpy>=1.26.1",
     "pandas>=2.1.2",
+    "python-dateutil>=2.9.0",
+    "pytz>=2024.1",
     "requests>=2.32.5",
     "wakepy>=0.10.1",
     "fastapi>=0.115.0",
@@ -29,6 +31,8 @@ dev = [
     "mypy>=1.10",
     "types-requests>=2.31",
     "types-beautifulsoup4>=4.12",
+    "pre-commit>=3.7",
+    "pip-audit>=2.7",
 ]
 gui = [
     "customtkinter>=5.2.0",
@@ -46,8 +50,7 @@ cuepoint = ["vendor/*.js", "templates/*.html"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 filterwarnings = [
-    "ignore::DeprecationWarning:dateutil",
-    "ignore::DeprecationWarning:pytz",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
 ]
 
 [tool.ruff]
@@ -107,10 +110,13 @@ disallow_untyped_calls = false
 disallow_untyped_decorators = false
 warn_return_any = false
 
+[tool.setuptools-scm]
+fallback_version = "1.0.0"
+
 [tool.coverage.run]
 source = ["src/cuepoint"]
 omit = ["src/cuepoint/gui.py"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 60
+fail_under = 75

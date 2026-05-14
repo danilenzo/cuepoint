@@ -1,20 +1,51 @@
 """
 Shared tag/genre parsing for artist info dicts.
 
-Centralizes JSON deserialization of sc_tags, dc_styles, bc_tags
-to avoid redundant json.loads() calls across scoring, discovery, and HTML modules.
+Centralizes JSON deserialization of sc_tags, dc_styles, bc_tags.
+Call materialize_tags() once after enrichment to cache parsed results
+on the dict as _parsed_tags / _parsed_tag_set / _parsed_labels.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any
+
+from .types import ArtistInfo
 
 _TAG_KEYS = ("sc_tags", "dc_styles", "bc_tags")
 
 
-def parse_artist_tags(artist_info: dict[str, Any]) -> list[str]:
-    """Parse all genre tags from an artist's SC/DC/BC fields. Returns list with duplicates."""
+def materialize_tags(artist_info: ArtistInfo) -> None:
+    """Parse JSON tag fields once and cache on the dict. Idempotent."""
+    if "_parsed_tags" in artist_info:
+        return
+    tags: list[str] = []
+    tag_set: set[str] = set()
+    for key in _TAG_KEYS:
+        raw = artist_info.get(key)
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                tags.extend(parsed)
+                tag_set.update(t.lower() for t in parsed if t)
+            except (json.JSONDecodeError, TypeError):
+                pass
+    artist_info["_parsed_tags"] = tags
+    artist_info["_parsed_tag_set"] = tag_set
+    raw_labels = artist_info.get("dc_labels")
+    if raw_labels:
+        try:
+            artist_info["_parsed_labels"] = set(json.loads(raw_labels))
+        except (json.JSONDecodeError, TypeError):
+            artist_info["_parsed_labels"] = set()
+    else:
+        artist_info["_parsed_labels"] = set()
+
+
+def parse_artist_tags(artist_info: ArtistInfo) -> list[str]:
+    """Return all genre tags (with duplicates). Uses cached result if available."""
+    if "_parsed_tags" in artist_info:
+        return artist_info["_parsed_tags"]
     tags: list[str] = []
     for key in _TAG_KEYS:
         raw = artist_info.get(key)
@@ -26,8 +57,10 @@ def parse_artist_tags(artist_info: dict[str, Any]) -> list[str]:
     return tags
 
 
-def parse_artist_tag_set(artist_info: dict[str, Any]) -> set[str]:
-    """Parse all genre tags as a lowercased deduplicated set (for similarity matching)."""
+def parse_artist_tag_set(artist_info: ArtistInfo) -> set[str]:
+    """Return lowercased deduplicated tag set. Uses cached result if available."""
+    if "_parsed_tag_set" in artist_info:
+        return set(artist_info["_parsed_tag_set"])
     tags: set[str] = set()
     for key in _TAG_KEYS:
         raw = artist_info.get(key)
@@ -39,8 +72,19 @@ def parse_artist_tag_set(artist_info: dict[str, Any]) -> set[str]:
     return tags
 
 
-def count_genre_matches(artist_info: dict[str, Any], genre_set: set[str]) -> int:
+def count_genre_matches(artist_info: ArtistInfo, genre_set: set[str]) -> int:
     """Count how many of the artist's tags match the configured genre filter."""
+    if "_parsed_tags" in artist_info:
+        best = 0
+        for key in _TAG_KEYS:
+            raw = artist_info.get(key)
+            if raw:
+                try:
+                    hits = sum(1 for g in json.loads(raw) if g in genre_set)
+                    best = max(best, hits)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return best
     best = 0
     for key in _TAG_KEYS:
         raw = artist_info.get(key)

@@ -22,6 +22,7 @@ from loguru import logger
 from . import config as cfg
 from .fuzzy_match import _normalize_alnum
 from .http_utils import async_retry_on_failure
+from .types import ArtistInfo
 
 # ---------------------------------------------------------------------------
 # Client & rate limiter
@@ -40,15 +41,19 @@ _HEADERS = {
 }
 
 
+_client_init_lock = asyncio.Lock()
+
+
 async def _get_client() -> httpx.AsyncClient:
     global _client
-    if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            headers=_HEADERS,
-            timeout=15.0,
-            follow_redirects=True,
-        )
-    return _client
+    async with _client_init_lock:
+        if _client is None or _client.is_closed:
+            _client = httpx.AsyncClient(
+                headers=_HEADERS,
+                timeout=15.0,
+                follow_redirects=True,
+            )
+        return _client
 
 
 async def close_client() -> None:
@@ -193,7 +198,7 @@ async def _parse_album(url: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-async def populate_bandcamp_info(artist_info: dict[str, Any]) -> dict[str, Any]:
+async def populate_bandcamp_info(artist_info: ArtistInfo) -> ArtistInfo:
     """
     Enrich artist_info with Bandcamp data.
 
@@ -226,9 +231,13 @@ async def populate_bandcamp_info(artist_info: dict[str, Any]) -> dict[str, Any]:
         total_supporters = 0
         latest_release = None
 
-        for album_url in album_urls[:max_albums]:
-            data = await _parse_album(album_url)
-            if not data:
+        album_results = await asyncio.gather(
+            *[_parse_album(url) for url in album_urls[:max_albums]],
+            return_exceptions=True,
+        )
+
+        for data in album_results:
+            if isinstance(data, Exception) or not data:
                 continue
             all_tags.extend(data.get("tags", []))
             total_supporters += data.get("supporters", 0)

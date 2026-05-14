@@ -19,6 +19,7 @@ from typing import Any
 from loguru import logger
 
 from .generic import BASE_PATH
+from .types import ArtistInfo
 
 DB_PATH = BASE_PATH / "cache/cuepoint.db"
 
@@ -48,8 +49,7 @@ def _get_conn() -> sqlite3.Connection:
             if not _db_initialized:
                 _db_initialized = True
                 init_db()
-                _migrate_metrics_schema()
-                _migrate_scraper_health_schema()
+                _run_migrations(_ensure_conn())
     return conn
 
 
@@ -125,6 +125,11 @@ def init_db() -> None:
             PRIMARY KEY (source, city)
         );
 
+        CREATE TABLE IF NOT EXISTS schema_version (
+            version    INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_artist_cache_cached_at ON artist_cache(cached_at);
         CREATE INDEX IF NOT EXISTS idx_scan_events_city ON scan_events(city);
         CREATE INDEX IF NOT EXISTS idx_api_results_city ON api_results(city);
@@ -174,7 +179,7 @@ def has_cached_artist(artist_id: str) -> bool:
     return row is not None
 
 
-def get_cached_artist(artist_id: str) -> tuple[dict[str, Any], str] | None:
+def get_cached_artist(artist_id: str) -> tuple[ArtistInfo, str] | None:
     """Return (data_dict, cached_at_iso) or None if not found."""
     conn = _get_conn()
     row = conn.execute(
@@ -186,7 +191,7 @@ def get_cached_artist(artist_id: str) -> tuple[dict[str, Any], str] | None:
     return None
 
 
-def save_cached_artist(artist_id: str, data: dict[str, Any]) -> None:
+def save_cached_artist(artist_id: str, data: ArtistInfo) -> None:
     conn = _get_conn()
     conn.execute(
         "INSERT OR REPLACE INTO artist_cache (artist_id, data, cached_at) VALUES (?, ?, ?)",
@@ -273,7 +278,7 @@ def save_artist_metrics(artist_id: str, sc_followers: int | None, dc_want: int |
     conn.commit()
 
 
-def batch_save_enriched(items: list[tuple[str, dict[str, Any], int | None, int | None]]) -> None:
+def batch_save_enriched(items: list[tuple[str, ArtistInfo, int | None, int | None]]) -> None:
     """Batch-save enriched artists: cache data + metrics in a single transaction.
 
     Each item is (artist_id, data_dict, sc_followers, dc_want).
@@ -593,9 +598,35 @@ def _json_default(obj: object) -> Any:
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-def _migrate_metrics_schema() -> None:
+# ---------------------------------------------------------------------------
+# Numbered migration system
+# ---------------------------------------------------------------------------
+
+_MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
+
+
+def _migration(version: int, description: str) -> Callable[[Callable[[sqlite3.Connection], None]], Callable[[sqlite3.Connection], None]]:
+    """Decorator to register a numbered migration."""
+    def decorator(fn: Callable[[sqlite3.Connection], None]) -> Callable[[sqlite3.Connection], None]:
+        _MIGRATIONS.append((version, description, fn))
+        return fn
+    return decorator
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    """Apply any pending migrations in order."""
+    applied = {row[0] for row in conn.execute("SELECT version FROM schema_version").fetchall()}
+    for version, desc, fn in sorted(_MIGRATIONS):
+        if version not in applied:
+            logger.info(f"Running migration {version}: {desc}")
+            fn(conn)
+            conn.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
+            conn.commit()
+
+
+@_migration(1, "add artist_metrics compound primary key")
+def _migrate_001(conn: sqlite3.Connection) -> None:
     """Migrate artist_metrics_history from single-row to multi-row schema."""
-    conn = _ensure_conn()
     cols = [row["name"] for row in conn.execute("PRAGMA table_info(artist_metrics_history)").fetchall()]
     if "artist_id" not in cols:
         return
@@ -619,9 +650,9 @@ def _migrate_metrics_schema() -> None:
         logger.info("Migrated artist_metrics_history to compound primary key")
 
 
-def _migrate_scraper_health_schema() -> None:
+@_migration(2, "add scraper_health last_nonempty_at column")
+def _migrate_002(conn: sqlite3.Connection) -> None:
     """Add last_nonempty_at column to scraper_health if missing."""
-    conn = _ensure_conn()
     cols = [row["name"] for row in conn.execute("PRAGMA table_info(scraper_health)").fetchall()]
     if "last_nonempty_at" not in cols and "source" in cols:
         conn.execute("ALTER TABLE scraper_health ADD COLUMN last_nonempty_at TEXT NOT NULL DEFAULT ''")

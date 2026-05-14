@@ -15,6 +15,7 @@ from loguru import logger
 from . import config as cfg
 from .following import is_following, record
 from .tag_utils import count_genre_matches, parse_artist_tags
+from .types import ArtistInfo
 
 
 def filter_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -37,7 +38,7 @@ def filter_df(df: pd.DataFrame) -> pd.DataFrame:
                     genres.extend(parse_artist_tags(artist))
                     if is_following(artist.get("soundcloud")):
                         following = True
-        except Exception as e:
+        except (TypeError, KeyError, AttributeError) as e:
             logger.warning(f"filter_row past artists error: {e}")
 
         for genre in row["genres"]:
@@ -64,7 +65,7 @@ def find_and_record(df: pd.DataFrame, city_name: str) -> None:
     df.apply(find_and_record_fun, axis=1)
 
 
-def _is_notable(artist_info: dict[str, Any] | None) -> bool:
+def _is_notable(artist_info: ArtistInfo | None) -> bool:
     """Check if an artist exceeds any lineup-strength threshold."""
     if artist_info is None:
         return False
@@ -83,6 +84,7 @@ def _is_notable(artist_info: dict[str, Any] | None) -> bool:
 def sort_df(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
+    df = df.copy()
 
     _genre_set = set(cfg.genre_filter())
 
@@ -90,7 +92,7 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
         return sum(1 for g in genres if g in _genre_set)
 
     def _score_artist(
-        artist_info: dict[str, Any] | None, divisor: int = 1, breakdown: dict[str, float] | None = None
+        artist_info: ArtistInfo | None, divisor: int = 1, breakdown: dict[str, float] | None = None
     ) -> float:
         if artist_info is None:
             return 0.0

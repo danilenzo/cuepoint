@@ -6,6 +6,8 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+import httpx
+
 from cuepoint.enrichment import (
     _run_enrichment_phases,
     enrich_batch_phased,
@@ -136,7 +138,7 @@ class TestGetArtistInfoByRaId:
     @patch("cuepoint.enrichment.check_rising")
     @patch("cuepoint.enrichment.populate_bandcamp_info", side_effect=lambda x: x)
     @patch("cuepoint.enrichment.populate_discogs_info", side_effect=lambda x: x)
-    @patch("cuepoint.enrichment.populate_sc_info", side_effect=Exception("SC down"))
+    @patch("cuepoint.enrichment.populate_sc_info", side_effect=httpx.ConnectError("SC down"))
     @patch("cuepoint.enrichment.get_cached_artist", return_value=None)
     def test_sc_failure_continues(self, mock_cache, mock_sc, mock_dc, mock_bc, mock_rising, mock_save):
         async def _get_urls(aid):

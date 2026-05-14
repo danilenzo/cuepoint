@@ -6,21 +6,26 @@ Extracted from event_fetcher.py for maintainability.
 
 from __future__ import annotations
 
-import json
-from typing import Any
-
 from . import config as cfg
 from . import db as store
 from .following import is_following
-from .tag_utils import parse_artist_tag_set
+from .tag_utils import materialize_tags, parse_artist_tag_set
+from .types import ArtistInfo
 
 
-def _artist_tags(info: dict[str, Any]) -> set[str]:
+def _get_labels(info: ArtistInfo) -> set[str]:
+    """Return parsed labels, materializing if needed."""
+    if "_parsed_labels" not in info:
+        materialize_tags(info)
+    return info.get("_parsed_labels", set())
+
+
+def _artist_tags(info: ArtistInfo) -> set[str]:
     """Extract a lowercased set of all genre tags for an artist."""
     return parse_artist_tag_set(info)
 
 
-def check_rising(artist_id: str | int, artist_info: dict[str, Any], *, save: bool = True) -> None:
+def check_rising(artist_id: str | int, artist_info: ArtistInfo, *, save: bool = True) -> None:
     """Compare current metrics to stored baseline; flag as rising if growth exceeds threshold.
 
     Args:
@@ -51,10 +56,13 @@ def check_rising(artist_id: str | int, artist_info: dict[str, Any], *, save: boo
         store.save_artist_metrics(str(artist_id), sc_val, dc_val)
 
 
-def compute_similarity(artist_lookup: dict[str | int, dict[str, Any]]) -> None:
-    """For each non-followed artist, find the best Jaccard match among followed artists."""
-    followed = {}
-    non_followed = {}
+def compute_similarity(artist_lookup: dict[str | int, ArtistInfo]) -> None:
+    """For each non-followed artist, find the best Jaccard match among followed artists.
+
+    Uses an inverted index (tag → followed artist IDs) to avoid O(N×M) full cross-product.
+    """
+    followed: dict[str | int, tuple[str, set[str]]] = {}
+    non_followed: dict[str | int, set[str]] = {}
     for aid, info in artist_lookup.items():
         sc_url = info.get("soundcloud")
         tags = _artist_tags(info)
@@ -68,39 +76,47 @@ def compute_similarity(artist_lookup: dict[str | int, dict[str, Any]]) -> None:
     if not followed:
         return
 
+    tag_to_followed: dict[str, list[str | int]] = {}
+    for fid, (_fname, ftags) in followed.items():
+        for tag in ftags:
+            tag_to_followed.setdefault(tag, []).append(fid)
+
+    min_overlap = cfg.similarity_min_overlap()
+    threshold = cfg.similarity_threshold()
+
     for aid, tags in non_followed.items():
+        candidates: dict[str | int, int] = {}
+        for tag in tags:
+            for fid in tag_to_followed.get(tag, ()):
+                candidates[fid] = candidates.get(fid, 0) + 1
+
         best_score = 0.0
         best_name = None
-        for _fid, (fname, ftags) in followed.items():
-            intersection = len(tags & ftags)
-            if intersection < cfg.similarity_min_overlap():
+        for fid, overlap_count in candidates.items():
+            if overlap_count < min_overlap:
                 continue
+            fname, ftags = followed[fid]
             union = len(tags | ftags)
             if union == 0:
                 continue
-            score = intersection / union
+            score = overlap_count / union
             if score > best_score:
                 best_score = score
                 best_name = fname
-        if best_score >= cfg.similarity_threshold() and best_name:
+        if best_score >= threshold and best_name:
             artist_lookup[aid]["_similar_to"] = best_name
             artist_lookup[aid]["_similarity_score"] = round(best_score * 100)
 
 
-def compute_label_affinity(artist_lookup: dict[str | int, dict[str, Any]]) -> None:
+def compute_label_affinity(artist_lookup: dict[str | int, ArtistInfo]) -> None:
     """Flag non-followed artists that share Discogs labels with followed artists."""
-    followed_labels = set()
-    followed_ids = set()
+    followed_labels: set[str] = set()
+    followed_ids: set[str | int] = set()
     for aid, info in artist_lookup.items():
         sc_url = info.get("soundcloud")
         if sc_url and is_following(sc_url):
             followed_ids.add(aid)
-            raw = info.get("dc_labels")
-            if raw:
-                try:
-                    followed_labels.update(json.loads(raw))
-                except (json.JSONDecodeError, TypeError):
-                    pass
+            followed_labels.update(_get_labels(info))
 
     if not followed_labels:
         return
@@ -108,12 +124,8 @@ def compute_label_affinity(artist_lookup: dict[str | int, dict[str, Any]]) -> No
     for aid, info in artist_lookup.items():
         if aid in followed_ids:
             continue
-        raw = info.get("dc_labels")
-        if not raw:
-            continue
-        try:
-            artist_labels = set(json.loads(raw))
-        except (json.JSONDecodeError, TypeError):
+        artist_labels = _get_labels(info)
+        if not artist_labels:
             continue
         shared = artist_labels & followed_labels
         if shared:

@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import os
 import re
 import time
 import uuid
@@ -28,7 +29,7 @@ from datetime import datetime
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from loguru import logger
@@ -37,6 +38,12 @@ from pydantic import BaseModel, Field
 from . import db as store
 from .enrichment import cleanup_cache
 from .event_fetcher import CITIES, close_clients
+
+try:
+    from importlib.metadata import version as _pkg_version
+    _VERSION = _pkg_version("cuepoint")
+except Exception:
+    _VERSION = "0.0.0-dev"
 
 
 @asynccontextmanager
@@ -53,7 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="cuepoint",
     description="Electronic music event scanner — fetches RA.co events, enriches artists via SoundCloud/Discogs/Bandcamp, filters and ranks by genre.",
-    version="1.0.0",
+    version=_VERSION,
     lifespan=lifespan,
 )
 
@@ -113,6 +120,22 @@ async def _check_rate_limit(client_ip: str) -> bool:
         timestamps.append(now)
         _rate_log[client_ip] = timestamps
         return True
+
+
+# ---------------------------------------------------------------------------
+# API key authentication (optional — open access when CUEPOINT_API_KEY unset)
+# ---------------------------------------------------------------------------
+
+_API_KEY: str | None = os.environ.get("CUEPOINT_API_KEY")
+
+
+async def _check_api_key(authorization: str | None = Header(default=None)) -> None:
+    if _API_KEY is None:
+        return
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    if authorization[7:] != _API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +308,7 @@ async def _run_scan(scan_id: str, req: ScanRequest) -> None:
 
     except Exception as e:
         logger.error(f"Scan {scan_id} failed: {e}")
-        await _update_scan(scan_id, status="failed", finished_at=datetime.now().isoformat(), error=str(e))
+        await _update_scan(scan_id, status="failed", finished_at=datetime.now().isoformat(), error="Scan failed. Check server logs for details.")
 
 
 def _resolve_city(city: str) -> tuple[str, str] | None:
@@ -307,7 +330,7 @@ async def root() -> dict[str, Any]:
     available_cities = list(CITIES.keys())
     return {
         "name": "cuepoint API",
-        "version": "1.0.0",
+        "version": _VERSION,
         "endpoints": {
             "POST /scan": "Start a scan for one or more cities",
             "GET /status": "List all scans",
@@ -326,7 +349,7 @@ async def health_check() -> HealthResponse:
     db_ok = store.check_db()
     return HealthResponse(
         status="ok" if db_ok else "degraded",
-        version="1.0.0",
+        version=_VERSION,
         db_ok=db_ok,
         cities_loaded=len(CITIES),
     )
@@ -337,7 +360,7 @@ async def list_cities() -> dict[str, list[str]]:
     return {"cities": list(CITIES.keys())}
 
 
-@app.post("/scan", response_model=ScanResponse)
+@app.post("/scan", response_model=ScanResponse, dependencies=[Depends(_check_api_key)])
 async def start_scan(req: ScanRequest, request: Request) -> ScanResponse:
     client_ip = request.client.host if request.client else "unknown"
     if not await _check_rate_limit(client_ip):
@@ -395,7 +418,7 @@ async def get_scan_status(scan_id: str) -> dict[str, Any]:
     return scan
 
 
-@app.get("/results/{city}", response_model=CityResultsResponse)
+@app.get("/results/{city}", response_model=CityResultsResponse, dependencies=[Depends(_check_api_key)])
 async def get_results(
     city: str,
     page: int = Query(default=1, ge=1, description="Page number"),
@@ -431,7 +454,7 @@ async def get_results(
     )
 
 
-@app.get("/results/{city}/export")
+@app.get("/results/{city}/export", dependencies=[Depends(_check_api_key)])
 async def export_results(city: str) -> StreamingResponse:
     resolved = _resolve_city(city)
     if resolved is None:

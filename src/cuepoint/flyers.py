@@ -3,21 +3,44 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import ipaddress
+import urllib.parse
 from typing import Any
 
 import httpx
 from loguru import logger
 from PIL import Image
 
+Image.MAX_IMAGE_PIXELS = 50_000_000
+
 _MAX_WIDTH = 400
 _JPEG_QUALITY = 70
 _DOWNLOAD_CONCURRENCY = 8
 _DOWNLOAD_TIMEOUT = 10.0
+_MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024
+_ALLOWED_SCHEMES = {"https"}
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:106.0) Gecko/20100101 Firefox/106.0",
     "Referer": "https://ra.co/",
 }
+
+
+def _is_safe_url(url: str) -> bool:
+    """Return False for private/internal targets to prevent SSRF."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        return False
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    if hostname.endswith((".local", ".internal")) or hostname == "localhost":
+        return False
+    try:
+        addr = ipaddress.ip_address(hostname)
+        return not addr.is_private and not addr.is_loopback and not addr.is_link_local
+    except ValueError:
+        return True
 
 
 def get_flyer(event_dict: dict[str, Any]) -> str | None:
@@ -49,8 +72,14 @@ async def embed_flyers(urls: list[str | None]) -> list[str | None]:
         async def _fetch(idx: int, url: str) -> None:
             async with sem:
                 try:
+                    if not _is_safe_url(url):
+                        logger.warning(f"Blocked unsafe flyer URL: {url}")
+                        return
                     r = await client.get(url)
                     r.raise_for_status()
+                    if len(r.content) > _MAX_DOWNLOAD_BYTES:
+                        logger.warning(f"Flyer too large ({len(r.content)} bytes): {url}")
+                        return
                     results[idx] = _to_data_uri(r.content)
                 except Exception as e:
                     logger.debug(f"Failed to download flyer {url}: {type(e).__name__}: {e}")

@@ -117,7 +117,7 @@ class TestPopulateDiscogsInfo:
 
     @patch("cuepoint.discogs._api_get")
     def test_api_error_handled_gracefully(self, mock_get):
-        mock_get.side_effect = Exception("Discogs down")
+        mock_get.side_effect = httpx.HTTPError("Discogs down")
         info = {"name": "Test", "discogs": "https://www.discogs.com/artist/12345-Test"}
         result = _run(populate_discogs_info(info))
         assert "dc_have" not in result

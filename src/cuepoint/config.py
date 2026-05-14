@@ -157,6 +157,11 @@ def cities() -> dict[str, tuple[int, str, str]]:
     return result
 
 
+# -- API --
+def api_key() -> str | None:
+    return _get("api", "key", None)
+
+
 # -- Discogs --
 def discogs_max_masters() -> int:
     return _get("discogs", "max_masters", 15)

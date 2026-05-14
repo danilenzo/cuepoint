@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src https: data:; connect-src 'none'; font-src 'none'; frame-src 'none'; worker-src blob:;">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>cuepoint</title>
 <style>
@@ -1011,6 +1012,12 @@ createApp({
             return pad(s.getHours()) + ':' + pad(s.getMinutes()) + ' - ' + pad(e.getHours()) + ':' + pad(e.getMinutes());
         }
 
+        function escHtml(s) {
+            var d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
         function cleanTicketTitle(title) {
             return title.replace(/\s*\([^)]*(?:£|€|\$|bf|BF|booking)[^)]*\)/gi, '').trim();
         }
@@ -1068,7 +1075,7 @@ createApp({
             var available = ev.tickets.filter(t => !t.soldOut).sort((a, b) => a.price - b.price);
             if (!available.length) return '<span style="color:var(--red);font-weight:600;">SOLD OUT</span>';
             return available.map(t => {
-                return '<div class="ticket-line"><span class="tk-name">' + cleanTicketTitle(t.title) + '</span><span class="tk-price">' + t.symbol + t.price.toFixed(2) + '</span></div>';
+                return '<div class="ticket-line"><span class="tk-name">' + escHtml(cleanTicketTitle(t.title)) + '</span><span class="tk-price">' + escHtml(t.symbol) + t.price.toFixed(2) + '</span></div>';
             }).join('');
         }
 

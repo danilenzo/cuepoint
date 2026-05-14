@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import threading
 from typing import Any
 
 import pandas as pd
@@ -23,7 +24,19 @@ def _load_from_file() -> set[str]:
     return {line.strip() for line in lines if line.strip() and not line.startswith("#")}
 
 
-FOLLOWING: set[str] = _load_from_file()
+FOLLOWING: set[str] = set()
+_following_loaded = False
+_load_lock = threading.Lock()
+
+
+def _ensure_loaded() -> None:
+    global _following_loaded
+    if _following_loaded:
+        return
+    with _load_lock:
+        if not _following_loaded:
+            FOLLOWING.update(_load_from_file())
+            _following_loaded = True
 
 
 def _build_expanded(slugs: set[str]) -> set[str]:
@@ -41,6 +54,7 @@ _FOLLOWING_EXPANDED: set[str] | None = None
 def _get_expanded() -> set[str]:
     """Return the expanded set, building it once from FOLLOWING on first call."""
     global _FOLLOWING_EXPANDED
+    _ensure_loaded()
     if _FOLLOWING_EXPANDED is None:
         _FOLLOWING_EXPANDED = _build_expanded(FOLLOWING)
     return _FOLLOWING_EXPANDED
@@ -48,9 +62,10 @@ def _get_expanded() -> set[str]:
 
 def reload_following() -> None:
     """Reload from file and rebuild the expanded set."""
-    global _FOLLOWING_EXPANDED
+    global _FOLLOWING_EXPANDED, _following_loaded
     FOLLOWING.clear()
     FOLLOWING.update(_load_from_file())
+    _following_loaded = True
     _FOLLOWING_EXPANDED = _build_expanded(FOLLOWING)
 
 
@@ -65,7 +80,7 @@ def record(artist: dict[str, Any], event: Any, city: str) -> None:
     try:
         event_date = event.get("event_date") or event.event_date
         date = event_date.strftime("%Y-%m-%d") if hasattr(event_date, "strftime") else str(event_date)[:10]
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         date = "unknown"
     event_url = str(event.get("event_url", "") or "")
     event_id = event_url.replace("https://ra.co/events/", "") or "unknown"

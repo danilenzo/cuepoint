@@ -13,6 +13,7 @@ pipeline skips RA/SC/Discogs lookups for these events.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections.abc import Awaitable, Callable
@@ -30,15 +31,19 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 _client: httpx.AsyncClient | None = None
 
 
+_client_init_lock = asyncio.Lock()
+
+
 async def _get_client() -> httpx.AsyncClient:
     global _client
-    if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            headers=HEADERS,
-            timeout=15.0,
-            follow_redirects=True,
-        )
-    return _client
+    async with _client_init_lock:
+        if _client is None or _client.is_closed:
+            _client = httpx.AsyncClient(
+                headers=HEADERS,
+                timeout=15.0,
+                follow_redirects=True,
+            )
+        return _client
 
 
 async def close_client() -> None:
@@ -107,8 +112,8 @@ async def scrape_city_clubs(city: str, start_date: datetime, end_date: datetime)
                 status="ok",
                 events_found=len(events),
             )
-        except Exception as e:
-            logger.warning(f"{scraper.__name__} failed: {e}")
+        except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+            logger.warning(f"{scraper.__name__} failed: {type(e).__name__}: {e}")
             store.record_scraper_health(
                 scraper.__name__,
                 city=city,
@@ -353,7 +358,7 @@ async def scrape_openground(start_date: datetime, end_date: datetime) -> list[di
                                 except ValueError:
                                     pass
                             break
-                    except Exception:
+                    except (json.JSONDecodeError, TypeError, KeyError):
                         continue
 
                 if not tickets:
@@ -363,8 +368,8 @@ async def scrape_openground(start_date: datetime, end_date: datetime) -> list[di
                         tickets = [_make_ticket(dp.group(1), "EUR")]
 
                 artists = _openground_parse_detail_page(dsoup)
-            except Exception as e:
-                logger.warning(f"Openground detail page failed ({url}): {e}")
+            except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+                logger.warning(f"Openground detail page failed ({url}): {type(e).__name__}: {e}")
 
             if not artists:
                 logger.debug(f"Openground: no JSON-LD performers for {href}, trying anchor fallback")
@@ -387,8 +392,8 @@ async def scrape_openground(start_date: datetime, end_date: datetime) -> list[di
                 )
             )
 
-    except Exception as e:
-        logger.warning(f"Openground scrape failed: {e}")
+    except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+        logger.warning(f"Openground scrape failed: {type(e).__name__}: {e}")
 
     logger.info(f"Openground: {len(events)} events in date range")
     return events
@@ -468,8 +473,8 @@ async def scrape_khidi(start_date: datetime, end_date: datetime) -> list[dict[st
                         _make_ticket(price, "GEL", title=tier_name, valid_type="SOLDOUT" if sold else "VALID")
                     )
 
-            except Exception as e:
-                logger.warning(f"Khidi detail page failed ({event_url}): {e}")
+            except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+                logger.warning(f"Khidi detail page failed ({event_url}): {type(e).__name__}: {e}")
 
             title = f"Khidi — {event_dt.strftime('%d %b %Y')}"
             events.append(
@@ -488,8 +493,8 @@ async def scrape_khidi(start_date: datetime, end_date: datetime) -> list[dict[st
             )
             logger.info(f"Khidi {event_url}: {len(artists)} artists: {[a['name'] for a in artists]}")
 
-    except Exception as e:
-        logger.warning(f"Khidi scrape failed: {e}")
+    except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+        logger.warning(f"Khidi scrape failed: {type(e).__name__}: {e}")
 
     logger.info(f"Khidi: {len(events)} events in date range")
     return events
@@ -586,8 +591,8 @@ async def scrape_bassiani(start_date: datetime, end_date: datetime) -> list[dict
                 )
             )
 
-    except Exception as e:
-        logger.warning(f"Bassiani scrape failed: {e}")
+    except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+        logger.warning(f"Bassiani scrape failed: {type(e).__name__}: {e}")
 
     logger.info(f"Bassiani: {len(events)} events in date range")
     return events
@@ -677,8 +682,8 @@ async def scrape_berghain(start_date: datetime, end_date: datetime) -> list[dict
                 )
             )
 
-    except Exception as e:
-        logger.warning(f"Berghain scrape failed: {e}")
+    except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+        logger.warning(f"Berghain scrape failed: {type(e).__name__}: {e}")
 
     logger.info(f"Berghain: {len(events)} events in date range")
     return events
@@ -805,8 +810,8 @@ async def scrape_tresor(start_date: datetime, end_date: datetime) -> list[dict[s
                     if "ra.co/events" in ticket_href:
                         break
 
-            except Exception as e:
-                logger.warning(f"Tresor detail page failed ({event_url}): {e}")
+            except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+                logger.warning(f"Tresor detail page failed ({event_url}): {type(e).__name__}: {e}")
 
             if not artists:
                 artists = listing_artists
@@ -831,8 +836,8 @@ async def scrape_tresor(start_date: datetime, end_date: datetime) -> list[dict[s
                 )
             )
 
-    except Exception as e:
-        logger.warning(f"Tresor scrape failed: {e}")
+    except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
+        logger.warning(f"Tresor scrape failed: {type(e).__name__}: {e}")
 
     logger.info(f"Tresor: {len(events)} events in date range")
     return events

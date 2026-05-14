@@ -162,7 +162,7 @@ def test_status_after_scan(mock_run: MagicMock, client: TestClient) -> None:
 
 
 def test_status_not_found(client: TestClient) -> None:
-    resp = client.get("/status/nonexistent123")
+    resp = client.get("/status/000000000000")
     assert resp.status_code == 404
 
 

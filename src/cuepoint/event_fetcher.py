@@ -101,6 +101,16 @@ class ScanContext:
         return self.start_date + timedelta(days=self.days_ahead)
 
 
+@dataclasses.dataclass
+class IncrementalPlan:
+    """Result of incremental scan analysis — which artists need enrichment."""
+
+    unique_artist_ids: list[str | int]
+    all_artist_ids: list[str | int]
+    unchanged_eids: set[str]
+    event_lineup_map: dict[str, dict[str, Any]]
+
+
 async def get_artist_urls(artist_id: str | int) -> dict[str, Any] | None:
     """Return {id, name, soundcloud, discogs, bandcamp, ra_followers} from SQLite cache or RA GraphQL."""
     key = str(artist_id)
@@ -249,15 +259,11 @@ def parse_events_list(events_list: list[dict[str, Any]]) -> pd.DataFrame:
     return df
 
 
-async def get_data(
+async def _fetch_and_dedup_events(
     ctx: ScanContext,
-    progress_cb: Callable[[dict[str, Any]], None] | None = None,
-    stats: ScanStats | None = None,
+    _cb: Callable[[str, str, float], None],
 ) -> pd.DataFrame:
-    def _cb(phase: str, detail: str, pct: float) -> None:
-        if progress_cb:
-            progress_cb({"phase": phase, "detail": detail, "pct": pct})
-
+    """Fetch RA events, deduplicate by event ID, and parse into a DataFrame."""
     start_date = ctx.start_date.strftime("%Y-%m-%d")
     end_date = ctx.end_date.strftime("%Y-%m-%d")
 
@@ -283,11 +289,11 @@ async def get_data(
     all_events = unique_events
 
     df = parse_events_list(all_events)
+    return df
 
-    if df.empty:
-        logger.warning(f"No RA events found for {ctx.city_name} in the requested date range.")
 
-    # --- Single pass: log events, build incremental snapshot, collect artist IDs ---
+def _build_incremental_plan(df: pd.DataFrame, ctx: ScanContext) -> IncrementalPlan:
+    """Log events, build incremental snapshot, and collect artist IDs to enrich."""
     incremental_enabled = cfg.incremental()
     prev_snapshot: dict[str, str] = {}
     event_lineup_map: dict[str, dict[str, Any]] = {}
@@ -336,15 +342,138 @@ async def get_data(
         elif incremental_enabled:
             logger.info("Incremental: first scan for this city, full enrichment")
 
-    logger.info(f"Enriching {len(unique_artist_ids)} unique artists (phased pipeline)...")
-    _cb("enrich", f"Enriching {len(unique_artist_ids)} artists...", 0.10)
+    return IncrementalPlan(
+        unique_artist_ids=unique_artist_ids,
+        all_artist_ids=all_artist_ids,
+        unchanged_eids=unchanged_eids,
+        event_lineup_map=event_lineup_map,
+    )
+
+
+async def _merge_club_events(
+    df: pd.DataFrame,
+    ctx: ScanContext,
+    artist_lookup: dict[str | int, dict[str, Any]],
+    _cb: Callable[[str, str, float], None],
+    stats: ScanStats | None = None,
+) -> pd.DataFrame:
+    """Scrape club websites, enrich stubs, merge with RA events, and deduplicate."""
+    _ra_by_name = {_norm_artist_name(info.get("name")): info for info in artist_lookup.values()}
+
+    _cb("clubs", "Scraping club websites...", 0.70)
+    club_events = await scrape_city_clubs(ctx.city_name, ctx.start_date, ctx.end_date)
+    if not club_events:
+        return df
+
+    seen_stub_ids: set[str] = set()
+    unique_stubs: list[dict[str, Any]] = []
+    for ev in club_events:
+        for a in ev.get("_prefilled_artists_info", []):
+            if a["id"] not in seen_stub_ids:
+                seen_stub_ids.add(a["id"])
+                unique_stubs.append(a)
+
+    logger.info(f"Enriching {len(unique_stubs)} club artists (phased pipeline)...")
+    stub_lookup = await enrich_club_batch_phased(unique_stubs, stats=stats)
+
+    for ev in club_events:
+        ev["_prefilled_artists_info"] = [
+            _merge_ra_into_stub(
+                {
+                    **stub_lookup.get(a["id"], a),
+                    "floor": a.get("floor"),
+                    **({} if not a.get("country") else {"country": a["country"]}),
+                },
+                _ra_by_name,
+            )
+            for a in ev["_prefilled_artists_info"]
+        ]
+
+    club_df = pd.DataFrame(club_events)
+    artists_info_col = club_df.pop("_prefilled_artists_info")
+    club_df["artists_info"] = list(artists_info_col)
+    club_df["artists_list_info_past"] = [[] for _ in range(len(club_df))]
+    club_flyer_urls = [get_flyer(row.to_dict()) for _, row in club_df.iterrows()]
+    club_df["flyer"] = await embed_flyers(club_flyer_urls)
+    for col in ["listing_date", "event_date", "start_time", "end_time"]:
+        club_df[col] = pd.to_datetime(club_df[col])
+
+    club_names = {str(ev["venue_name"]).lower() for ev in club_events}
+    club_dates = {pd.Timestamp(ev["event_date"]).date() for ev in club_events}
+
+    def _is_club_duplicate(ra_row: Any) -> bool:
+        ra_date = pd.Timestamp(ra_row["event_date"]).date()
+        if ra_date not in club_dates:
+            return False
+        ra_venue = str(ra_row["venue_name"]).lower()
+        return any(cn in ra_venue for cn in club_names)
+
+    for _idx, ra_row in df.iterrows():
+        if not _is_club_duplicate(ra_row):
+            continue
+        ra_date = pd.Timestamp(ra_row["event_date"]).date()
+        ra_flyer = ra_row.get("flyer")
+        ra_attending = ra_row.get("attending", 0)
+        ra_title = _normalize_alnum(str(ra_row.get("title", "")))
+
+        best_ci = None
+        for ci in club_df.index:
+            c_date = pd.Timestamp(club_df.at[ci, "event_date"]).date()
+            if c_date != ra_date:
+                continue
+            c_title = _normalize_alnum(str(club_df.at[ci, "title"]))
+            if ra_title and c_title and (ra_title in c_title or c_title in ra_title):
+                best_ci = ci
+                break
+            if best_ci is None:
+                best_ci = ci
+
+        if best_ci is not None:
+            cur_flyer = club_df.at[best_ci, "flyer"]
+            cur_attending = club_df.at[best_ci, "attending"]
+            flyer_empty = cur_flyer is None or pd.isna(cur_flyer)
+            if ra_flyer and flyer_empty:
+                club_df.at[best_ci, "flyer"] = ra_flyer
+            if ra_attending and (not cur_attending or cur_attending == 0):
+                club_df.at[best_ci, "attending"] = ra_attending
+
+    before = len(df)
+    df = df[~df.apply(_is_club_duplicate, axis=1)]
+    dropped = before - len(df)
+    if dropped:
+        logger.info(f"Dropped {dropped} RA duplicate(s) superseded by club-scraper events")
+
+    df = pd.concat([df, club_df], ignore_index=True)
+    logger.info(f"Added {len(club_df)} club-website events to {ctx.city_name} results")
+
+    return df
+
+
+async def get_data(
+    ctx: ScanContext,
+    progress_cb: Callable[[dict[str, Any]], None] | None = None,
+    stats: ScanStats | None = None,
+) -> pd.DataFrame:
+    def _cb(phase: str, detail: str, pct: float) -> None:
+        if progress_cb:
+            progress_cb({"phase": phase, "detail": detail, "pct": pct})
+
+    df = await _fetch_and_dedup_events(ctx, _cb)
+
+    if df.empty:
+        logger.warning(f"No RA events found for {ctx.city_name} in the requested date range.")
+
+    plan = _build_incremental_plan(df, ctx)
+
+    logger.info(f"Enriching {len(plan.unique_artist_ids)} unique artists (phased pipeline)...")
+    _cb("enrich", f"Enriching {len(plan.unique_artist_ids)} artists...", 0.10)
 
     artist_lookup = await enrich_batch_phased(
-        unique_artist_ids, get_artist_urls, progress_cb=progress_cb, pct_base=0.10, pct_range=0.55, stats=stats
+        plan.unique_artist_ids, get_artist_urls, progress_cb=progress_cb, pct_base=0.10, pct_range=0.55, stats=stats
     )
 
     # Load cached artists that were skipped by incremental mode
-    skipped_ids = [aid for aid in all_artist_ids if aid not in artist_lookup]
+    skipped_ids = [aid for aid in plan.all_artist_ids if aid not in artist_lookup]
     if skipped_ids:
         loaded = 0
         for aid in skipped_ids:
@@ -355,7 +484,7 @@ async def get_data(
         logger.info(f"Loaded {loaded} cached artists from unchanged events")
 
     # Re-enrich stale artists
-    stale_ids = [aid for aid in all_artist_ids if is_cache_stale(aid)]
+    stale_ids = [aid for aid in plan.all_artist_ids if is_cache_stale(aid)]
     if stale_ids:
         logger.info(f"Re-enriching {len(stale_ids)} stale artists (cache > {CACHE_STALE_DAYS}d)...")
         for aid in stale_ids:
@@ -376,100 +505,15 @@ async def get_data(
     df["flyer"] = await flyer_task
 
     # Save scan snapshot for incremental mode
-    if incremental_enabled and not df.empty:
+    if cfg.incremental() and not df.empty:
         snapshot_rows = [
             {"event_id": eid, "artist_ids": info["artist_ids"], "lineup_hash": info["lineup_hash"]}
-            for eid, info in event_lineup_map.items()
+            for eid, info in plan.event_lineup_map.items()
         ]
         store.save_scan_snapshot(ctx.city_name, snapshot_rows)
         logger.debug(f"Saved scan snapshot: {len(snapshot_rows)} events for {ctx.city_name}")
 
-    _ra_by_name = {_norm_artist_name(info.get("name")): info for info in artist_lookup.values()}
-
-    # Append events scraped directly from club websites
-    _cb("clubs", "Scraping club websites...", 0.70)
-    club_events = await scrape_city_clubs(ctx.city_name, ctx.start_date, ctx.end_date)
-    if club_events:
-        seen_stub_ids: set[str] = set()
-        unique_stubs: list[dict[str, Any]] = []
-        for ev in club_events:
-            for a in ev.get("_prefilled_artists_info", []):
-                if a["id"] not in seen_stub_ids:
-                    seen_stub_ids.add(a["id"])
-                    unique_stubs.append(a)
-
-        logger.info(f"Enriching {len(unique_stubs)} club artists (phased pipeline)...")
-        stub_lookup = await enrich_club_batch_phased(unique_stubs, stats=stats)
-
-        for ev in club_events:
-            ev["_prefilled_artists_info"] = [
-                _merge_ra_into_stub(
-                    {
-                        **stub_lookup.get(a["id"], a),
-                        "floor": a.get("floor"),
-                        **({} if not a.get("country") else {"country": a["country"]}),
-                    },
-                    _ra_by_name,
-                )
-                for a in ev["_prefilled_artists_info"]
-            ]
-
-        club_df = pd.DataFrame(club_events)
-        artists_info_col = club_df.pop("_prefilled_artists_info")
-        club_df["artists_info"] = list(artists_info_col)
-        club_df["artists_list_info_past"] = [[] for _ in range(len(club_df))]
-        club_flyer_urls = [get_flyer(row.to_dict()) for _, row in club_df.iterrows()]
-        club_df["flyer"] = await embed_flyers(club_flyer_urls)
-        for col in ["listing_date", "event_date", "start_time", "end_time"]:
-            club_df[col] = pd.to_datetime(club_df[col])
-
-        club_names = {str(ev["venue_name"]).lower() for ev in club_events}
-        club_dates = {pd.Timestamp(ev["event_date"]).date() for ev in club_events}
-
-        def _is_club_duplicate(ra_row: Any) -> bool:
-            ra_date = pd.Timestamp(ra_row["event_date"]).date()
-            if ra_date not in club_dates:
-                return False
-            ra_venue = str(ra_row["venue_name"]).lower()
-            return any(cn in ra_venue for cn in club_names)
-
-        for _idx, ra_row in df.iterrows():
-            if not _is_club_duplicate(ra_row):
-                continue
-            ra_date = pd.Timestamp(ra_row["event_date"]).date()
-            ra_flyer = ra_row.get("flyer")
-            ra_attending = ra_row.get("attending", 0)
-            ra_title = _normalize_alnum(str(ra_row.get("title", "")))
-
-            best_ci = None
-            for ci in club_df.index:
-                c_date = pd.Timestamp(club_df.at[ci, "event_date"]).date()
-                if c_date != ra_date:
-                    continue
-                c_title = _normalize_alnum(str(club_df.at[ci, "title"]))
-                if ra_title and c_title and (ra_title in c_title or c_title in ra_title):
-                    best_ci = ci
-                    break
-                if best_ci is None:
-                    best_ci = ci
-
-            if best_ci is not None:
-                cur_flyer = club_df.at[best_ci, "flyer"]
-                cur_attending = club_df.at[best_ci, "attending"]
-                flyer_empty = cur_flyer is None or pd.isna(cur_flyer)
-                if ra_flyer and flyer_empty:
-                    club_df.at[best_ci, "flyer"] = ra_flyer
-                if ra_attending and (not cur_attending or cur_attending == 0):
-                    club_df.at[best_ci, "attending"] = ra_attending
-
-        before = len(df)
-        df = df[~df.apply(_is_club_duplicate, axis=1)]
-        dropped = before - len(df)
-        if dropped:
-            logger.info(f"Dropped {dropped} RA duplicate(s) superseded by club-scraper events")
-
-        df = pd.concat([df, club_df], ignore_index=True)
-        logger.info(f"Added {len(club_df)} club-website events to {ctx.city_name} results")
+    df = await _merge_club_events(df, ctx, artist_lookup, _cb, stats)
 
     df["city_name"] = ctx.city_name
     return df

@@ -50,7 +50,7 @@ _CLIENT_ID_PATTERNS = [
 
 def get_client_id(session: requests.Session) -> str:
     """Extract the client_id embedded in SoundCloud's JS bundles."""
-    for attempt in range(3):
+    for _attempt in range(3):
         r = session.get("https://soundcloud.com", timeout=15)
         r.raise_for_status()
         js_urls = list(dict.fromkeys(re.findall(r'https://[^"\']+\.js', r.text)))
