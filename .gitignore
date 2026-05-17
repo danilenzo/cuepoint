@@ -29,3 +29,17 @@ lib/scratch/
 
 config.toml
 following.txt
+
+# Personal / unrelated
+PORTFOLIO_BRIEF.md
+cue_encoding.py
+playlist_parser.py
+
+# Bundled third-party scrapers (unused)
+external_libs/
+
+# Scratch work
+lib/
+
+# Compiled Vue assets
+static/

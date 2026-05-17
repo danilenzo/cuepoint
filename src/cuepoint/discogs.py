@@ -112,10 +112,11 @@ async def _api_get(url: str, params: dict[str, Any] | None = None) -> Any:
             min_interval = 1.05
         else:
             min_interval = 0.4
-        elapsed = now - _last_request_time
-        if elapsed < min_interval:
-            await asyncio.sleep(min_interval - elapsed)
-        _last_request_time = time.monotonic()
+        wait = min_interval - (now - _last_request_time)
+        _last_request_time = now + max(wait, 0)
+
+    if wait > 0:
+        await asyncio.sleep(wait)
 
     client = await _get_client()
     r = await client.get(url, params=params)

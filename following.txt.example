@@ -1,0 +1,5 @@
+# SoundCloud artist slugs — one per line.
+# Populate by running: python -m cuepoint.fetch_following <profile_url>
+/ben-klock
+/dvs1
+/rodhad

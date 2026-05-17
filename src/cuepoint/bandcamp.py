@@ -68,14 +68,15 @@ async def _fetch(url: str, params: dict[str, str] | None = None) -> httpx.Respon
     """GET with rate limiting (~3 req/sec global, max 3 concurrent)."""
     global _last_request_time
 
-    async with _rate_lock:
-        now = time.monotonic()
-        elapsed = now - _last_request_time
-        if elapsed < _MIN_INTERVAL:
-            await asyncio.sleep(_MIN_INTERVAL - elapsed)
-        _last_request_time = time.monotonic()
-
     async with _rate_semaphore:
+        async with _rate_lock:
+            now = time.monotonic()
+            wait = _MIN_INTERVAL - (now - _last_request_time)
+            _last_request_time = now + max(wait, 0)
+
+        if wait > 0:
+            await asyncio.sleep(wait)
+
         client = await _get_client()
         r = await client.get(url, params=params)
         r.raise_for_status()

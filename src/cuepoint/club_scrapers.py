@@ -99,26 +99,33 @@ def get_registered_cities() -> list[str]:
 
 
 async def scrape_city_clubs(city: str, start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
-    """Run all registered scrapers for a city and combine results."""
+    """Run all registered scrapers for a city in parallel and combine results."""
     scrapers = _REGISTRY.get(city, [])
+    if not scrapers:
+        return []
+
+    results = await asyncio.gather(
+        *[scraper(start_date, end_date) for scraper in scrapers],
+        return_exceptions=True,
+    )
+
     all_events: list[dict[str, Any]] = []
-    for scraper in scrapers:
-        try:
-            events = await scraper(start_date, end_date)
-            all_events.extend(events)
-            store.record_scraper_health(
-                scraper.__name__,
-                city=city,
-                status="ok",
-                events_found=len(events),
-            )
-        except (httpx.HTTPError, ValueError, KeyError, AttributeError, json.JSONDecodeError) as e:
-            logger.warning(f"{scraper.__name__} failed: {type(e).__name__}: {e}")
+    for scraper, result in zip(scrapers, results):
+        if isinstance(result, Exception):
+            logger.warning(f"{scraper.__name__} failed: {type(result).__name__}: {result}")
             store.record_scraper_health(
                 scraper.__name__,
                 city=city,
                 status="error",
-                error_msg=str(e)[:200],
+                error_msg=str(result)[:200],
+            )
+        else:
+            all_events.extend(result)
+            store.record_scraper_health(
+                scraper.__name__,
+                city=city,
+                status="ok",
+                events_found=len(result),
             )
     return all_events
 

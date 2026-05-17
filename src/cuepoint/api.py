@@ -20,6 +20,7 @@ import asyncio
 import csv
 import io
 import os
+from pathlib import Path
 import re
 import time
 import uuid
@@ -31,7 +32,8 @@ from typing import Any
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -49,9 +51,12 @@ except Exception:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
-    for task in _background_tasks:
+    # Snapshot the set before iterating — done_callbacks run discard() on
+    # the live set, which would mutate it while we loop over it.
+    pending = list(_background_tasks)
+    for task in pending:
         task.cancel()
-    await asyncio.gather(*_background_tasks, return_exceptions=True)
+    await asyncio.gather(*pending, return_exceptions=True)
     _background_tasks.clear()
     await close_clients()
     store.close_db()
@@ -83,12 +88,18 @@ _background_tasks: set[asyncio.Task[None]] = set()
 
 
 def _evict_stale_scans() -> None:
-    """Remove completed scans older than _SCAN_TTL, cap at _MAX_SCANS."""
+    """Remove completed scans older than _SCAN_TTL, cap at _MAX_SCANS.
+
+    Must be called while the caller already holds _scans_lock.
+    Kept as a plain function (not async) so the caller controls locking
+    granularity — call it only when the dict is already locked.
+    """
     now = time.monotonic()
     stale = [
         sid
         for sid, s in _scans.items()
-        if s.get("status") in ("done", "error") and now - s.get("_mono", now) > _SCAN_TTL
+        if s.get("status") in ("done", "error", "completed", "failed")
+        and now - s.get("_mono", now) > _SCAN_TTL
     ]
     for sid in stale:
         del _scans[sid]
@@ -112,13 +123,16 @@ async def _check_rate_limit(client_ip: str) -> bool:
     """Return True if the request is allowed."""
     now = time.monotonic()
     async with _rate_lock:
-        timestamps = _rate_log.get(client_ip, [])
-        timestamps = [t for t in timestamps if now - t < _RATE_LIMIT_WINDOW]
+        timestamps = [t for t in _rate_log.get(client_ip, []) if now - t < _RATE_LIMIT_WINDOW]
         if len(timestamps) >= _RATE_LIMIT_MAX:
             _rate_log[client_ip] = timestamps
             return False
         timestamps.append(now)
-        _rate_log[client_ip] = timestamps
+        if timestamps:
+            _rate_log[client_ip] = timestamps
+        else:
+            # No recent activity — remove the entry entirely to avoid unbounded growth
+            _rate_log.pop(client_ip, None)
         return True
 
 
@@ -151,6 +165,7 @@ class ScanRequest(BaseModel):
         json_schema_extra={"example": ["berlin", "amsterdam"]},
     )
     days: int = Field(default=7, ge=1, le=90, description="Number of days ahead to scan")
+    start_date: str | None = Field(default=None, description="Start date (YYYY-MM-DD). Defaults to today.")
     parallel: int = Field(default=1, ge=1, le=8, description="Parallel worker count for multi-city scans")
     full: bool = Field(default=False, description="Force full re-scan, ignoring incremental cache")
 
@@ -236,7 +251,7 @@ def _serialize_artist(info: dict[str, Any] | None) -> dict[str, Any]:
 def _df_to_events(df: pd.DataFrame) -> list[dict[str, Any]]:
     """Convert a scored DataFrame to a list of JSON-serializable event dicts."""
     events: list[dict[str, Any]] = []
-    for _, row in df.iterrows():
+    for row in df.to_dict("records"):
         genres = []
         if isinstance(row.get("genres"), list):
             genres = [g["name"] if isinstance(g, dict) else str(g) for g in row["genres"]]
@@ -283,7 +298,13 @@ async def _run_scan(scan_id: str, req: ScanRequest) -> None:
 
         from .event_fetcher import run_for_city
 
-        start_date = datetime.now()
+        if req.start_date:
+            try:
+                start_date = datetime.strptime(req.start_date, "%Y-%m-%d")
+            except ValueError:
+                start_date = datetime.now()
+        else:
+            start_date = datetime.now()
         raw_results = []
 
         for city_key in req.cities:
@@ -325,23 +346,23 @@ def _resolve_city(city: str) -> tuple[str, str] | None:
 # ---------------------------------------------------------------------------
 
 
-@app.get("/")
-async def root() -> dict[str, Any]:
+_STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
+
+# Read index.html once at import time so GET / never touches the filesystem again.
+_INDEX_HTML: str | None = None
+_index_path = _STATIC_DIR / "index.html"
+if _index_path.exists():
+    _INDEX_HTML = _index_path.read_text(encoding="utf-8")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def landing_page() -> HTMLResponse:
+    if _INDEX_HTML is not None:
+        return HTMLResponse(_INDEX_HTML)
     available_cities = list(CITIES.keys())
-    return {
-        "name": "cuepoint API",
-        "version": _VERSION,
-        "endpoints": {
-            "POST /scan": "Start a scan for one or more cities",
-            "GET /status": "List all scans",
-            "GET /status/{scan_id}": "Get scan status by ID",
-            "GET /results/{city}": "Get latest results for a city",
-            "GET /results/{city}/export": "Export results as CSV",
-            "GET /health": "Readiness check",
-            "GET /cities": "List available cities",
-        },
-        "cities": available_cities,
-    }
+    return HTMLResponse(
+        f"<pre>cuepoint API {_VERSION}\nCities: {available_cities}\nDocs: /docs</pre>"
+    )
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -358,6 +379,14 @@ async def health_check() -> HealthResponse:
 @app.get("/cities")
 async def list_cities() -> dict[str, list[str]]:
     return {"cities": list(CITIES.keys())}
+
+
+@app.post("/reset-breaker", dependencies=[Depends(_check_api_key)])
+async def reset_breaker() -> dict[str, str]:
+    """Reset the SoundCloud circuit breaker without restarting the server."""
+    from .sc import reset_circuit_breaker
+    await reset_circuit_breaker()
+    return {"status": "ok", "detail": "SC circuit breaker and rate limiter reset"}
 
 
 @app.post("/scan", response_model=ScanResponse, dependencies=[Depends(_check_api_key)])
@@ -496,3 +525,63 @@ async def export_results(city: str) -> StreamingResponse:
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+_OUTPUT_DIR = Path(__file__).resolve().parent.parent.parent / "output"
+
+
+@app.get("/results/{city}/report", dependencies=[Depends(_check_api_key)])
+async def export_html_report(city: str) -> HTMLResponse:
+    """Serve the latest generated HTML report for a city."""
+    resolved = _resolve_city(city)
+    if resolved is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown city '{city}'. Available: {list(CITIES.keys())}",
+        )
+    city_lower, city_display = resolved
+
+    if not _OUTPUT_DIR.exists():
+        raise HTTPException(status_code=404, detail="No reports generated yet. Run a scan first.")
+
+    safe_city = re.sub(r"[^a-zA-Z0-9_-]", "_", city_display)
+    matches = sorted(_OUTPUT_DIR.glob(f"{safe_city}_*.html"), key=lambda p: p.stat().st_mtime, reverse=True)
+
+    if not matches:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No HTML report for '{city_display}'. Run a scan first via POST /scan.",
+        )
+
+    report_html = matches[0].read_text(encoding="utf-8")
+    filename = matches[0].name
+    return HTMLResponse(
+        content=report_html,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class SyncFollowingRequest(BaseModel):
+    profile_url: str = Field(..., description="SoundCloud profile URL, e.g. https://soundcloud.com/username")
+
+
+@app.post("/sync-following")
+async def sync_following(req: SyncFollowingRequest) -> dict[str, Any]:
+    """Sync followed artists from a SoundCloud profile."""
+    url = req.profile_url.strip()
+    if not re.match(r"https?://(www\.)?soundcloud\.com/[a-zA-Z0-9_-]+/?$", url):
+        raise HTTPException(status_code=400, detail="Invalid SoundCloud profile URL.")
+
+    try:
+        from .fetch_following import fetch_following_slugs, update_following
+
+        def _sync_all() -> int:
+            slugs = fetch_following_slugs(url)
+            update_following(slugs)
+            return len(slugs)
+
+        artists_synced = await asyncio.to_thread(_sync_all)
+        return {"status": "ok", "artists_synced": artists_synced}
+    except Exception as e:
+        logger.error(f"Following sync failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to sync following list. SoundCloud may be rate-limiting.")

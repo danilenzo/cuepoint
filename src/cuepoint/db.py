@@ -109,7 +109,7 @@ def init_db() -> None:
         );
 
         CREATE TABLE IF NOT EXISTS api_results (
-            city       TEXT NOT NULL,
+            city       TEXT PRIMARY KEY,
             data       TEXT NOT NULL,
             scanned_at TEXT NOT NULL
         );
@@ -278,10 +278,21 @@ def save_artist_metrics(artist_id: str, sc_followers: int | None, dc_want: int |
     conn.commit()
 
 
+def _prune_metrics_history(conn: sqlite3.Connection, artist_ids: list[str], keep: int = 5) -> None:
+    """Keep only the `keep` oldest rows per artist — run once after a batch insert."""
+    for aid in artist_ids:
+        conn.execute(
+            "DELETE FROM artist_metrics_history WHERE artist_id = ? AND recorded_at NOT IN "
+            "(SELECT recorded_at FROM artist_metrics_history WHERE artist_id = ? ORDER BY recorded_at ASC LIMIT ?)",
+            (aid, aid, keep),
+        )
+
+
 def batch_save_enriched(items: list[tuple[str, ArtistInfo, int | None, int | None]]) -> None:
     """Batch-save enriched artists: cache data + metrics in a single transaction.
 
     Each item is (artist_id, data_dict, sc_followers, dc_want).
+    Metrics history is pruned to 5 rows per artist inside the same transaction.
     """
     if not items:
         return
@@ -295,6 +306,8 @@ def batch_save_enriched(items: list[tuple[str, ArtistInfo, int | None, int | Non
         "INSERT OR IGNORE INTO artist_metrics_history (artist_id, sc_followers, dc_want, recorded_at) VALUES (?, ?, ?, ?)",
         [(str(aid), sc, dc, now) for aid, _, sc, dc in items],
     )
+    # Prune history within the same transaction — one commit for everything
+    _prune_metrics_history(conn, [str(aid) for aid, *_ in items])
     conn.commit()
 
 
@@ -399,11 +412,10 @@ def clear_scan_snapshot(city: str) -> None:
 
 
 def save_api_results(city: str, events: list[dict[str, Any]]) -> None:
-    """Replace stored API results for a city with fresh data."""
+    """Replace stored API results for a city with fresh data (atomic upsert)."""
     conn = _get_conn()
-    conn.execute("DELETE FROM api_results WHERE city = ?", (city,))
     conn.execute(
-        "INSERT INTO api_results (city, data, scanned_at) VALUES (?, ?, ?)",
+        "INSERT OR REPLACE INTO api_results (city, data, scanned_at) VALUES (?, ?, ?)",
         (city, json.dumps(events, ensure_ascii=False, default=_json_default), datetime.now().isoformat()),
     )
     conn.commit()
@@ -413,7 +425,7 @@ def get_api_results(city: str) -> list[dict[str, Any]] | None:
     """Return stored API results for a city, or None if never scanned."""
     conn = _get_conn()
     row = conn.execute(
-        "SELECT data FROM api_results WHERE city = ? ORDER BY scanned_at DESC LIMIT 1",
+        "SELECT data FROM api_results WHERE city = ?",
         (city,),
     ).fetchone()
     if row:
@@ -648,6 +660,33 @@ def _migrate_001(conn: sqlite3.Connection) -> None:
             DROP TABLE _old_metrics;
         """)
         logger.info("Migrated artist_metrics_history to compound primary key")
+
+
+@_migration(3, "rebuild api_results with city PRIMARY KEY")
+def _migrate_003(conn: sqlite3.Connection) -> None:
+    """Deduplicate api_results and add a PRIMARY KEY on city."""
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "api_results" not in tables:
+        return
+    pk_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='api_results'"
+    ).fetchone()
+    if pk_sql and "PRIMARY KEY" in (pk_sql["sql"] or ""):
+        return  # already migrated
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS _api_results_new (
+            city       TEXT PRIMARY KEY,
+            data       TEXT NOT NULL,
+            scanned_at TEXT NOT NULL
+        );
+        INSERT OR REPLACE INTO _api_results_new (city, data, scanned_at)
+            SELECT city, data, scanned_at FROM api_results
+            ORDER BY scanned_at DESC;
+        DROP TABLE api_results;
+        ALTER TABLE _api_results_new RENAME TO api_results;
+        CREATE INDEX IF NOT EXISTS idx_api_results_city ON api_results(city);
+    """)
+    logger.info("Migration 3: rebuilt api_results with city PRIMARY KEY")
 
 
 @_migration(2, "add scraper_health last_nonempty_at column")

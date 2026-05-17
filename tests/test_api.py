@@ -43,11 +43,7 @@ def client() -> TestClient:
 def test_root(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["name"] == "cuepoint API"
-    assert "cities" in body
-    assert isinstance(body["cities"], list)
-    assert len(body["cities"]) > 0
+    assert "text/html" in resp.headers["content-type"]
 
 
 # ---------------------------------------------------------------------------

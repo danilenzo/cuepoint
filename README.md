@@ -1,36 +1,68 @@
 # cuepoint
 
-Multi-source ETL pipeline that scrapes electronic music events from RA.co and club websites, enriches artist data from three external APIs (SoundCloud, Discogs, Bandcamp), scores and ranks events using a configurable algorithm, and serves results via a FastAPI REST API or interactive HTML report.
+![CI](https://github.com/danilvorobjov/cuepoint/actions/workflows/ci.yml/badge.svg)
+![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue)
+![Tests](https://img.shields.io/badge/tests-587_passing-green)
+![Coverage](https://img.shields.io/badge/coverage-75%25+-brightgreen)
+![mypy strict](https://img.shields.io/badge/mypy-strict-blue)
+![Docker](https://img.shields.io/badge/docker-ready-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-284 tests. Docker support. Zero Selenium -- all HTTP via `httpx`/`requests`.
+Multi-source ETL pipeline that scrapes electronic music events from listing platforms and venue websites, enriches artist data from three external APIs (SoundCloud, Discogs, Bandcamp), scores and ranks events using a configurable algorithm, and serves results via a FastAPI REST API or interactive HTML report.
+
+Built to solve a real problem: finding good electronic music events across 16 cities without manually checking every listing.
 
 ---
 
-## Quick start
+## Tech Stack
+
+**Core:** Python 3.12, FastAPI, httpx (async), SQLite (WAL mode)
+**Data:** pandas, BeautifulSoup, lxml
+**Infra:** Docker, Docker Compose, Make
+**Testing:** pytest (587 tests across 40 files), mypy strict, ruff
+**APIs:** GraphQL consumption, REST (Discogs, SoundCloud), web scraping (Bandcamp)
+**Patterns:** ETL pipeline, registry pattern, retry with exponential backoff, incremental processing, thread-safe concurrency
+
+---
+
+## Engineering Highlights
+
+- **587 tests** across 40 files — unit, integration, API endpoint, security (XSS, SSRF), concurrency, and end-to-end pipeline coverage
+- **Strict type checking** — `mypy --strict` across the entire codebase with full type annotations
+- **Zero Selenium** — all HTTP via async `httpx` with retry/backoff/jitter
+- **Incremental processing** — SHA-256 lineup hashing skips 60-70% of enrichment work on repeat scans
+- **Thread-safe concurrency** — SQLite WAL + thread-local connections + semaphore rate limiters + `ThreadPoolExecutor`
+- **Production-grade API** — rate limiting, pagination, health checks, CSV export, background task execution
+- **Clean architecture** — frozen dataclasses, decorator-based registry pattern, configurable scoring weights via TOML
+- **Retry resilience** — all external calls wrapped with exponential backoff, jitter, and `Retry-After` header support
+- **CI pipeline** — lint, typecheck, test, and security audit on every push
+
+---
+
+## Quick Start
 
 ### Docker (recommended)
 
 ```bash
-git clone <repo-url> && cd cuepoint
+git clone https://github.com/danilvorobjov/cuepoint.git && cd cuepoint
 docker compose up --build
-# API running at http://localhost:8000
+# API at http://localhost:8000
 # Swagger UI at http://localhost:8000/docs
 ```
 
 ### Local
 
 ```bash
-git clone <repo-url> && cd cuepoint
 pip install -e ".[dev]"
 
 # CLI - scan Berlin events for the next 7 days
 python -m cuepoint.event_fetcher --cities berlin --days 7
 
-# API - start the server
+# API
 uvicorn cuepoint.api:app --reload --port 8000
 ```
 
-Or use the Makefile:
+### Makefile
 
 ```bash
 make install    # install package + dev tools
@@ -39,45 +71,11 @@ make test       # run test suite
 make lint       # check linting
 ```
 
-### Deploy (Railway / Render / Fly.io)
-
-The project includes a `Dockerfile` and `Procfile` for one-click deploy on any container platform. The `$PORT` env var is respected automatically.
-
-```bash
-# Railway
-railway up
-
-# Render — connect repo, select Docker, done
-# Fly.io
-fly launch
-```
-
----
-
-## What it does
-
-1. **Extracts** events from RA.co's GraphQL API + 5 club websites (Berghain, Tresor, Bassiani, Khidi, Openground)
-2. **Enriches** each artist from three sources:
-   - **SoundCloud** -- genre tags, follower count (API with auto-extracted `client_id`)
-   - **Discogs** -- release styles, have/want counts, ratings, labels (REST API)
-   - **Bandcamp** -- tags, supporter counts, latest release date (scraping)
-3. **Filters** by configurable genres (default: Techno, Drum & Bass) or followed artists
-4. **Scores** using a weighted formula: SC followers + Discogs popularity + Bandcamp supporters + genre match multipliers + discovery bonuses (rising artists, similarity, shared labels, release recency)
-5. **Serves** results via REST API with pagination, rate limiting, and CSV export, or generates interactive HTML reports per city
-
 ---
 
 ## REST API
 
-Start the server:
-
-```bash
-uvicorn cuepoint.api:app --reload --port 8000
-```
-
-Interactive docs at `http://localhost:8000/docs`
-
-### Endpoints
+Interactive docs at `http://localhost:8000/docs` (Swagger UI).
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -89,15 +87,10 @@ Interactive docs at `http://localhost:8000/docs`
 | `GET` | `/health` | Readiness check (DB status, version) |
 | `GET` | `/cities` | List available city keys |
 
-### Features
+**Features:** pagination, rate limiting (5 scans/60s per IP), persistent SQLite storage, CSV export, health checks for container orchestration.
 
-- **Pagination** -- `/results/{city}?page=1&page_size=50`
-- **Rate limiting** -- 5 scans per 60s per IP on POST `/scan`
-- **Persistent results** -- scan results stored in SQLite, survive server restarts
-- **CSV export** -- `/results/{city}/export` for spreadsheet analysis
-- **Health check** -- `/health` for monitoring and container orchestration
-
-### Examples
+<details>
+<summary>Example requests</summary>
 
 ```bash
 # start a scan
@@ -113,12 +106,13 @@ curl http://localhost:8000/results/berlin?page=1&page_size=50
 
 # export as CSV
 curl -O http://localhost:8000/results/berlin/export
-
-# health check
-curl http://localhost:8000/health
 ```
 
-Response from `/results/berlin`:
+</details>
+
+<details>
+<summary>Example response</summary>
+
 ```json
 {
   "city": "Berlin",
@@ -148,30 +142,7 @@ Response from `/results/berlin`:
 }
 ```
 
----
-
-## CLI
-
-```bash
-# single city
-python -m cuepoint.event_fetcher --cities berlin --days 7
-
-# multiple cities in parallel
-python -m cuepoint.event_fetcher --cities amsterdam berlin london --parallel 3
-
-# force full re-scan (ignore incremental cache)
-python -m cuepoint.event_fetcher --cities lisbon --full
-```
-
-Output: interactive HTML report saved to `output/`.
-
----
-
-## Desktop GUI
-
-Run `python -m cuepoint.gui`.
-
-3-tab layout: **Scan** (city selection, date range, progress bar, live log), **Results** (per-city cards with report links), **Settings** (genre filters, scoring weights, cache TTLs -- saves to `config.toml`).
+</details>
 
 ---
 
@@ -185,52 +156,73 @@ src/cuepoint/
   scoring.py         -- filter, sort, scoring formula with configurable weights
   discovery.py       -- rising detection, artist similarity, label affinity
   db.py              -- SQLite storage (WAL mode, thread-safe, indexed)
-  sc.py              -- SoundCloud API client
-  discogs.py         -- Discogs REST API client
+  sc.py              -- SoundCloud API client (OAuth + fallback)
+  discogs.py         -- Discogs REST API client (token auth, 60 req/min)
   bandcamp.py        -- Bandcamp scraper with semaphore rate limiting
   club_scrapers.py   -- @register_club decorator, per-room lineup parsing
   http_utils.py      -- @retry_on_failure with exponential backoff + jitter
   html_creator.py    -- Vue 3 interactive report generator
   gui.py             -- CustomTkinter desktop GUI
   following.py       -- followed artist set, URL matching
-  fetch_following.py -- sync script to refresh following list from SoundCloud
-  flyers.py          -- flyer image download, resize, base64 embedding
   fuzzy_match.py     -- name normalization, Levenshtein distance
-  payloads.py        -- GraphQL query builders for RA API
-  tag_utils.py       -- shared JSON tag parsing
-  stats.py           -- pipeline metrics dataclass
   config.py          -- typed accessors from config.toml
-  generic.py         -- global constants (URLs, paths)
-tests/               -- 284 tests across 26 files
+tests/               -- 587 tests across 40 files
 ```
 
-### Key design decisions
+### Pipeline Flow
 
-- **Thread-safe concurrency** -- SQLite WAL mode with thread-local connections, per-source rate limiters with locks and semaphores, `ThreadPoolExecutor` for parallel city scans
-- **Incremental scans** -- lineup hash comparison (SHA-256) via SQLite snapshots skips 60-70% of enrichment work on repeat runs
-- **Tiered cache TTLs** -- 7 days for followed artists, 30 days for others, 14-day soft stale threshold triggers re-enrichment
-- **Retry resilience** -- all external API calls wrapped with exponential backoff + jitter, respects `Retry-After` on 429s
-- **Registry pattern** -- club scrapers use `@register_club("city")` decorator for clean extensibility
-- **Frozen dataclass** -- `ScanContext` replaces mutable module globals for safe parallel execution
+```
+Resident Advisor (GraphQL)  ──┐
+Club websites (HTTP scrape)  ──┼──► Parse lineups
+                               │
+           ┌───────────────────┘
+           ▼
+    Enrich each artist (async, cached)
+    ├── SoundCloud  → followers, tags
+    ├── Discogs     → have/want, styles, labels
+    └── Bandcamp    → supporters, tags, releases
+           │
+           ▼
+    Score & rank events
+    ├── Platform metrics weighted sum
+    ├── Genre match multipliers
+    ├── Followed artist bonus
+    ├── Rising detection (growth vs baseline)
+    ├── Artist similarity (Jaccard overlap)
+    └── Shared label + recency bonuses
+           │
+           ▼
+    Output: HTML report / REST API / GUI
+```
+
+### Key Design Decisions
+
+- **Thread-safe concurrency** — SQLite WAL mode with thread-local connections, per-source rate limiters with locks and semaphores, `ThreadPoolExecutor` for parallel city scans
+- **Incremental scans** — lineup hash comparison (SHA-256) via SQLite snapshots skips 60-70% of enrichment work on repeat runs
+- **Tiered cache TTLs** — 7 days for followed artists, 30 days for others, 14-day soft stale threshold triggers re-enrichment
+- **Retry resilience** — all external API calls wrapped with exponential backoff + jitter, respects `Retry-After` on 429s
+- **Registry pattern** — club scrapers use `@register_club("city")` decorator for clean extensibility
+- **Frozen dataclass** — `ScanContext` replaces mutable module globals for safe parallel execution
 
 ---
 
-## Data storage
+## Data Storage
 
 SQLite at `cache/cuepoint.db` (WAL mode, thread-safe):
 
 | Table | Purpose | TTL |
 |-------|---------|-----|
-| `artist_urls` | RA artist ID -> SC/Discogs/BC URLs | permanent |
-| `artist_cache` | full enrichment data per artist | 30d (7d for followed) |
-| `found_events` | events featuring followed artists | permanent |
-| `artist_metrics_history` | SC/DC baselines for rising detection | permanent |
-| `scan_events` | lineup snapshots for incremental scans | overwritten each scan |
-| `api_results` | latest scan results per city for the API | overwritten each scan |
+| `artist_urls` | Artist ID -> SC/Discogs/BC URLs | permanent |
+| `artist_cache` | Full enrichment data per artist | 30d (7d for followed) |
+| `found_events` | Events featuring followed artists | permanent |
+| `artist_metrics_history` | Baselines for rising detection | permanent |
+| `scan_events` | Lineup snapshots for incremental scans | overwritten each scan |
+| `api_results` | Latest scan results per city for the API | overwritten each scan |
 
 ---
 
-## Scoring formula
+<details>
+<summary>Scoring Formula</summary>
 
 ```
 event_score = sum(artist_scores) + ra_genre_bonus * genre_count
@@ -246,11 +238,12 @@ artist_score = (sc_followers * genre_match / sc_weight)
              + recency_bonus * decay_factor
 ```
 
-All weights configurable in `config.toml` (copy `config.toml.example` to customise).
+All weights configurable in `config.toml`.
 
----
+</details>
 
-## Configuration
+<details>
+<summary>Configuration</summary>
 
 All settings in `config.toml` (defaults in `config.toml.example`):
 
@@ -275,15 +268,17 @@ followed_bonus = 1000000
 filter = ["Techno", "Drum & Bass", "Drum n Bass"]
 ```
 
----
+</details>
 
-## Supported cities
+<details>
+<summary>Supported Cities</summary>
 
 amsterdam, athens, barcelona, berlin, birmingham, bristol, buenos aires, lisbon, london, madrid, osaka, paris, tbilisi, tokyo, warsaw, wuppertal
 
----
+</details>
 
-## Club scrapers
+<details>
+<summary>Club Scrapers</summary>
 
 | City | Club | Rooms |
 |------|------|-------|
@@ -293,51 +288,34 @@ amsterdam, athens, barcelona, berlin, birmingham, bristol, buenos aires, lisbon,
 | Tbilisi | Khidi | -- |
 | Wuppertal | Openground | FREIFELD, ANNEX |
 
-Club events are deduplicated against RA by venue + date matching.
+Club events are deduplicated against the listing platform by venue + date matching.
+
+</details>
 
 ---
 
 ## Testing
 
 ```bash
-make test                              # run all 284 tests
+make test                           # run all 587 tests
 pytest tests/ --cov=src/cuepoint    # with coverage
-pytest tests/test_scoring.py -v        # specific file
 ```
 
-26 test files covering: config, SQLite storage (CRUD + batch ops), HTTP retry logic (sync + async), SoundCloud auth/circuit breaker, Discogs/Bandcamp API mocking, club scraper parsing, enrichment pipeline, scoring with discovery signals, genre filtering, fuzzy matching, event fetching/parsing, HTML helpers, following detection, flyer processing, payload builders, pipeline stats, FastAPI endpoints (health, pagination, rate limiting, export).
+40 test files covering: config validation, SQLite storage (CRUD + batch ops + migrations), HTTP retry logic (sync + async), SoundCloud auth/circuit breaker, Discogs/Bandcamp API mocking, club scraper parsing, enrichment pipeline, scoring with discovery signals, genre filtering, fuzzy matching, event fetching/parsing, HTML helpers, following detection, payload builders, pipeline stats, FastAPI endpoints (health, pagination, rate limiting, export), security (XSS injection, SSRF prevention), concurrency under load, lazy initialization, and full end-to-end pipeline tests.
 
 ---
 
-## Setup
+## Deploy
 
-**Requirements:** Python 3.12+ (tested on 3.13)
-
-```bash
-pip install -e ".[dev]"
-```
-
-**Discogs API token** (optional, increases rate limit from 25 to 60 req/min):
+The project includes a `Dockerfile` and `Procfile` for one-click deploy on any container platform. The `$PORT` env var is respected automatically.
 
 ```bash
-echo "YOUR_TOKEN" > .discogs_token
+# Railway
+railway up
+
+# Fly.io
+fly launch
 ```
-
-Or set `DISCOGS_TOKEN` as an environment variable (recommended for Docker).
-
----
-
-## Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| `httpx` | async HTTP (RA, SC, Discogs, Bandcamp, club scrapers, flyers) |
-| `requests` | sync HTTP (fetch_following script) |
-| `fastapi` + `uvicorn` | REST API |
-| `pandas` | event data processing |
-| `beautifulsoup4` + `lxml` | HTML parsing |
-| `loguru` | structured logging |
-| `pytest` + `ruff` | testing and linting |
 
 ---
 
