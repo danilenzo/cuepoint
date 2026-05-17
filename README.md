@@ -1,6 +1,6 @@
 # cuepoint
 
-![CI](https://github.com/danilvorobjov/cuepoint/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/danilenzo/cuepoint/actions/workflows/ci.yml/badge.svg)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue)
 ![Tests](https://img.shields.io/badge/tests-587_passing-green)
 ![Coverage](https://img.shields.io/badge/coverage-75%25+-brightgreen)
@@ -44,7 +44,7 @@ Built to solve a real problem: finding good electronic music events across 16 ci
 ### Docker (recommended)
 
 ```bash
-git clone https://github.com/danilvorobjov/cuepoint.git && cd cuepoint
+git clone https://github.com/danilenzo/cuepoint.git && cd cuepoint
 docker compose up --build
 # API at http://localhost:8000
 # Swagger UI at http://localhost:8000/docs
