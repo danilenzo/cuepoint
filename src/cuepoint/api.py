@@ -20,20 +20,19 @@ import asyncio
 import csv
 import io
 import os
-from pathlib import Path
 import re
 import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException, Header, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -43,6 +42,7 @@ from .event_fetcher import CITIES, close_clients
 
 try:
     from importlib.metadata import version as _pkg_version
+
     _VERSION = _pkg_version("cuepoint")
 except Exception:
     _VERSION = "0.0.0-dev"
@@ -98,8 +98,7 @@ def _evict_stale_scans() -> None:
     stale = [
         sid
         for sid, s in _scans.items()
-        if s.get("status") in ("done", "error", "completed", "failed")
-        and now - s.get("_mono", now) > _SCAN_TTL
+        if s.get("status") in ("done", "error", "completed", "failed") and now - s.get("_mono", now) > _SCAN_TTL
     ]
     for sid in stale:
         del _scans[sid]
@@ -329,7 +328,12 @@ async def _run_scan(scan_id: str, req: ScanRequest) -> None:
 
     except Exception as e:
         logger.error(f"Scan {scan_id} failed: {e}")
-        await _update_scan(scan_id, status="failed", finished_at=datetime.now().isoformat(), error="Scan failed. Check server logs for details.")
+        await _update_scan(
+            scan_id,
+            status="failed",
+            finished_at=datetime.now().isoformat(),
+            error="Scan failed. Check server logs for details.",
+        )
 
 
 def _resolve_city(city: str) -> tuple[str, str] | None:
@@ -360,9 +364,7 @@ async def landing_page() -> HTMLResponse:
     if _INDEX_HTML is not None:
         return HTMLResponse(_INDEX_HTML)
     available_cities = list(CITIES.keys())
-    return HTMLResponse(
-        f"<pre>cuepoint API {_VERSION}\nCities: {available_cities}\nDocs: /docs</pre>"
-    )
+    return HTMLResponse(f"<pre>cuepoint API {_VERSION}\nCities: {available_cities}\nDocs: /docs</pre>")
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -385,6 +387,7 @@ async def list_cities() -> dict[str, list[str]]:
 async def reset_breaker() -> dict[str, str]:
     """Reset the SoundCloud circuit breaker without restarting the server."""
     from .sc import reset_circuit_breaker
+
     await reset_circuit_breaker()
     return {"status": "ok", "detail": "SC circuit breaker and rate limiter reset"}
 
@@ -539,7 +542,7 @@ async def export_html_report(city: str) -> HTMLResponse:
             status_code=404,
             detail=f"Unknown city '{city}'. Available: {list(CITIES.keys())}",
         )
-    city_lower, city_display = resolved
+    _city_lower, city_display = resolved
 
     if not _OUTPUT_DIR.exists():
         raise HTTPException(status_code=404, detail="No reports generated yet. Run a scan first.")
@@ -584,4 +587,6 @@ async def sync_following(req: SyncFollowingRequest) -> dict[str, Any]:
         return {"status": "ok", "artists_synced": artists_synced}
     except Exception as e:
         logger.error(f"Following sync failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to sync following list. SoundCloud may be rate-limiting.")
+        raise HTTPException(
+            status_code=500, detail="Failed to sync following list. SoundCloud may be rate-limiting."
+        ) from None

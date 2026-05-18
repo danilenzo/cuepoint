@@ -14,7 +14,7 @@ import sqlite3
 import threading
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -37,7 +37,7 @@ def _ensure_conn() -> sqlite3.Connection:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.row_factory = sqlite3.Row
         _local.conn = conn
-    return _local.conn
+    return cast(sqlite3.Connection, _local.conn)
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -617,11 +617,15 @@ def _json_default(obj: object) -> Any:
 _MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
 
 
-def _migration(version: int, description: str) -> Callable[[Callable[[sqlite3.Connection], None]], Callable[[sqlite3.Connection], None]]:
+def _migration(
+    version: int, description: str
+) -> Callable[[Callable[[sqlite3.Connection], None]], Callable[[sqlite3.Connection], None]]:
     """Decorator to register a numbered migration."""
+
     def decorator(fn: Callable[[sqlite3.Connection], None]) -> Callable[[sqlite3.Connection], None]:
         _MIGRATIONS.append((version, description, fn))
         return fn
+
     return decorator
 
 
@@ -668,9 +672,7 @@ def _migrate_003(conn: sqlite3.Connection) -> None:
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
     if "api_results" not in tables:
         return
-    pk_sql = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='api_results'"
-    ).fetchone()
+    pk_sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='api_results'").fetchone()
     if pk_sql and "PRIMARY KEY" in (pk_sql["sql"] or ""):
         return  # already migrated
     conn.executescript("""

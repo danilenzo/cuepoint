@@ -57,7 +57,7 @@ def _find_ra_match(name: str, ra_by_name: dict[str, dict[str, Any]]) -> dict[str
     return best_ra
 
 
-def _merge_ra_into_stub(stub: dict[str, Any], ra_by_name: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def _merge_ra_into_stub(stub: dict[str, Any], ra_by_name: dict[str, Any]) -> dict[str, Any]:
     """Copy SC/Discogs enrichment from RA data into a club artist stub where names match."""
     ra = _find_ra_match(stub.get("name", ""), ra_by_name)
     if not ra:

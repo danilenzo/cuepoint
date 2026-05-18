@@ -10,7 +10,7 @@ import asyncio
 import time
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from loguru import logger
@@ -188,8 +188,10 @@ async def _run_enrichment_phases(
     batch_items: list[tuple[str, ArtistInfo, int | None, int | None]] = []
     for aid, info in to_enrich:
         check_rising(aid, info, save=False)
-        sc_val = int(info["sc_followers"]) if info.get("sc_followers") is not None else None
-        dc_val = int(info["dc_want"]) if info.get("dc_want") is not None else None
+        _sc_raw = info.get("sc_followers")
+        sc_val = int(_sc_raw) if _sc_raw is not None else None
+        _dc_raw = info.get("dc_want")
+        dc_val = int(_dc_raw) if _dc_raw is not None else None
         batch_items.append((str(aid), info, sc_val, dc_val))
         results[aid] = info
 
@@ -318,11 +320,12 @@ async def enrich_club_batch_phased(stubs: list[ArtistInfo], stats: ScanStats | N
     results: dict[str, ArtistInfo] = {}
     to_enrich: list[tuple[str, ArtistInfo]] = []
     for stub in stubs:
-        cached = get_cached_artist(stub["id"])
+        stub_id = str(stub["id"])
+        cached = get_cached_artist(stub_id)
         if cached is not None:
-            results[stub["id"]] = cached
+            results[stub_id] = cached
         else:
-            to_enrich.append((stub["id"], dict(stub)))
+            to_enrich.append((stub_id, cast(ArtistInfo, dict(stub))))
 
     if not to_enrich:
         return results

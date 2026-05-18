@@ -110,7 +110,7 @@ async def scrape_city_clubs(city: str, start_date: datetime, end_date: datetime)
     )
 
     all_events: list[dict[str, Any]] = []
-    for scraper, result in zip(scrapers, results):
+    for scraper, result in zip(scrapers, results, strict=False):
         if isinstance(result, Exception):
             logger.warning(f"{scraper.__name__} failed: {type(result).__name__}: {result}")
             store.record_scraper_health(
@@ -120,6 +120,7 @@ async def scrape_city_clubs(city: str, start_date: datetime, end_date: datetime)
                 error_msg=str(result)[:200],
             )
         else:
+            assert isinstance(result, list)
             all_events.extend(result)
             store.record_scraper_health(
                 scraper.__name__,

@@ -240,6 +240,7 @@ async def populate_bandcamp_info(artist_info: ArtistInfo) -> ArtistInfo:
         for data in album_results:
             if isinstance(data, Exception) or not data:
                 continue
+            assert isinstance(data, dict)
             all_tags.extend(data.get("tags", []))
             total_supporters += data.get("supporters", 0)
             rd = data.get("release_date")

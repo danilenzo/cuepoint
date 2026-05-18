@@ -25,10 +25,10 @@ import httpx
 from loguru import logger
 
 from .following import is_following
-from .types import ArtistInfo
 from .fuzzy_match import _normalize_alnum
 from .generic import BASE_PATH
 from .http_utils import async_retry_on_failure
+from .types import ArtistInfo
 
 # ---------------------------------------------------------------------------
 # Client & auth
@@ -170,6 +170,7 @@ async def _scrape_client_id() -> str:
 # ---------------------------------------------------------------------------
 # API helpers
 # ---------------------------------------------------------------------------
+
 
 class SCCircuitOpen(Exception):
     """Raised when too many 403s trip the circuit breaker."""

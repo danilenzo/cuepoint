@@ -25,7 +25,7 @@ def materialize_tags(artist_info: ArtistInfo) -> None:
         raw = artist_info.get(key)
         if raw:
             try:
-                parsed = json.loads(raw)
+                parsed = json.loads(str(raw))
                 tags.extend(parsed)
                 tag_set.update(t.lower() for t in parsed if t)
             except (json.JSONDecodeError, TypeError):
@@ -35,7 +35,7 @@ def materialize_tags(artist_info: ArtistInfo) -> None:
     raw_labels = artist_info.get("dc_labels")
     if raw_labels:
         try:
-            artist_info["_parsed_labels"] = set(json.loads(raw_labels))
+            artist_info["_parsed_labels"] = set(json.loads(str(raw_labels)))
         except (json.JSONDecodeError, TypeError):
             artist_info["_parsed_labels"] = set()
     else:
@@ -51,7 +51,7 @@ def parse_artist_tags(artist_info: ArtistInfo) -> list[str]:
         raw = artist_info.get(key)
         if raw:
             try:
-                tags.extend(json.loads(raw))
+                tags.extend(json.loads(str(raw)))
             except (json.JSONDecodeError, TypeError):
                 pass
     return tags
@@ -66,7 +66,7 @@ def parse_artist_tag_set(artist_info: ArtistInfo) -> set[str]:
         raw = artist_info.get(key)
         if raw:
             try:
-                tags.update(t.lower() for t in json.loads(raw) if t)
+                tags.update(t.lower() for t in json.loads(str(raw)) if t)
             except (json.JSONDecodeError, TypeError):
                 pass
     return tags
@@ -80,7 +80,7 @@ def count_genre_matches(artist_info: ArtistInfo, genre_set: set[str]) -> int:
             raw = artist_info.get(key)
             if raw:
                 try:
-                    hits = sum(1 for g in json.loads(raw) if g in genre_set)
+                    hits: int = sum(int(g in genre_set) for g in json.loads(str(raw)))
                     best = max(best, hits)
                 except (json.JSONDecodeError, TypeError):
                     pass
@@ -90,7 +90,7 @@ def count_genre_matches(artist_info: ArtistInfo, genre_set: set[str]) -> int:
         raw = artist_info.get(key)
         if raw:
             try:
-                hits = sum(1 for g in json.loads(raw) if g in genre_set)
+                hits = sum(int(g in genre_set) for g in json.loads(str(raw)))
                 best = max(best, hits)
             except (json.JSONDecodeError, TypeError):
                 pass

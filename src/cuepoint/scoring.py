@@ -114,8 +114,9 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
         if "dc_have" in artist_info and artist_info["dc_have"] is not None:
             _add("dc_have", int(artist_info["dc_have"]) * genre_hits / cfg.dc_weight() / divisor)
 
-        if artist_info.get("bc_supporters"):
-            _add("bc_supporters", int(artist_info["bc_supporters"]) * genre_hits / cfg.bc_weight() / divisor)
+        bc_sup = artist_info.get("bc_supporters")
+        if bc_sup:
+            _add("bc_supporters", int(bc_sup) * genre_hits / cfg.bc_weight() / divisor)
 
         if artist_info.get("_rising"):
             _add("rising", cfg.rising_bonus() / divisor)

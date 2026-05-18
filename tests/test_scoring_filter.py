@@ -1,11 +1,11 @@
 """Tests for filter_df() in scoring.py."""
+
 from __future__ import annotations
 
 import json
 from unittest.mock import patch
 
 import pandas as pd
-import pytest
 
 from cuepoint.scoring import filter_df
 

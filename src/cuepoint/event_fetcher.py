@@ -43,6 +43,7 @@ from .payloads import get_artist_payload_by_id, get_event_listings_payload
 from .scoring import filter_df, sort_df
 from .scoring import find_and_record as _find_and_record
 from .stats import ScanStats
+from .types import ArtistInfo
 
 DELAY = cfg.ra_request_delay()
 
@@ -353,7 +354,7 @@ def _build_incremental_plan(df: pd.DataFrame, ctx: ScanContext) -> IncrementalPl
 async def _merge_club_events(
     df: pd.DataFrame,
     ctx: ScanContext,
-    artist_lookup: dict[str | int, dict[str, Any]],
+    artist_lookup: dict[str | int, ArtistInfo],
     _cb: Callable[[str, str, float], None],
     stats: ScanStats | None = None,
 ) -> pd.DataFrame:
@@ -366,7 +367,7 @@ async def _merge_club_events(
         return df
 
     seen_stub_ids: set[str] = set()
-    unique_stubs: list[dict[str, Any]] = []
+    unique_stubs: list[ArtistInfo] = []
     for ev in club_events:
         for a in ev.get("_prefilled_artists_info", []):
             if a["id"] not in seen_stub_ids:
@@ -771,6 +772,4 @@ if __name__ == "__main__":
                 logger.info(f"  {r['city']}: {status}")
         else:
             for city in args.cities:
-                run_for_city_sync(
-                    city, start_date, args.days, full=args.full, on_sorted_df=_print_breakdown
-                )
+                run_for_city_sync(city, start_date, args.days, full=args.full, on_sorted_df=_print_breakdown)
