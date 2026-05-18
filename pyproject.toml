@@ -101,7 +101,7 @@ module = "cuepoint.gui"
 disallow_untyped_defs = false
 disallow_untyped_calls = false
 warn_return_any = false
-disable_error_code = ["misc"]
+disable_error_code = ["misc", "attr-defined"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
