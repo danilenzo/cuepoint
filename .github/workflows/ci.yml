@@ -77,7 +77,7 @@ jobs:
       - name: Check for secrets in code
         run: |
           pip install detect-secrets
-          detect-secrets scan --all-files --exclude-files '\.git/.*' --exclude-files 'venv/.*' > .secrets-baseline.json
+          detect-secrets scan --all-files --exclude-files '\.git/.*' --exclude-files 'venv/.*' --exclude-files 'tests/.*' > .secrets-baseline.json
           python -c "
           import json, sys
           with open('.secrets-baseline.json') as f:

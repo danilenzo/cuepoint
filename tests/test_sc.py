@@ -544,6 +544,7 @@ class TestApiGetCircuitBreaker:
         with pytest.raises(SCCircuitOpen):
             _run(_api_get("https://api.soundcloud.com/users"))
 
+    @patch("cuepoint.sc.time.monotonic", return_value=1000.0)
     @patch("cuepoint.sc.random.uniform", return_value=0.0)
     @patch("cuepoint.sc.asyncio.sleep", return_value=None)
     @patch("cuepoint.sc._scrape_client_id")
@@ -556,6 +557,7 @@ class TestApiGetCircuitBreaker:
         mock_scrape,
         mock_sleep,
         mock_random,
+        mock_monotonic,
     ):
         """On 403, client_id should be refreshed if cooldown has elapsed."""
         self._reset_circuit_state()
