@@ -8,9 +8,15 @@
 ![Docker](https://img.shields.io/badge/docker-ready-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Multi-source ETL pipeline that scrapes electronic music events from listing platforms and venue websites, enriches artist data from three external APIs (SoundCloud, Discogs, Bandcamp), scores and ranks events using a configurable algorithm, and serves results via a FastAPI REST API or interactive HTML report.
+**Find the electronic music events worth going to — automatically.**
 
-Built to solve a real problem: finding good electronic music events across 16 cities without manually checking every listing.
+Checking event listings manually is tedious — cross-referencing Resident Advisor, SoundCloud, Discogs, and Bandcamp for each artist on each lineup to figure out which events are actually worth attending. Cuepoint automates that entire workflow.
+
+Give it a list of cities and a date range — it fetches every upcoming event from Resident Advisor and venue websites, enriches every artist from three platforms, scores and ranks events against your taste profile, and outputs an interactive report ready to browse before the weekend.
+
+**16 cities · 4 APIs · 587 tests · Used in production weekly.**
+
+![Cuepoint card view](docs/screenshots/report_cards.png)
 
 ---
 
@@ -35,7 +41,25 @@ Built to solve a real problem: finding good electronic music events across 16 ci
 - **Production-grade API** — rate limiting, pagination, health checks, CSV export, background task execution
 - **Clean architecture** — frozen dataclasses, decorator-based registry pattern, configurable scoring weights via TOML
 - **Retry resilience** — all external calls wrapped with exponential backoff, jitter, and `Retry-After` header support
+- **Circuit breaker** — tracks SoundCloud 403 failure ratio, trips at 60% of 8+ requests; pipeline continues with Discogs/Bandcamp data rather than stalling
+- **Dual SoundCloud auth** — OAuth 2.1 when configured, automatic fallback to scraped `client_id` from JS bundles
 - **CI pipeline** — lint, typecheck, test, and security audit on every push
+
+---
+
+## Screenshots
+
+![Card view](docs/screenshots/report_cards.png)
+*Card view — flyer-forward, discovery signals, strength indicators*
+
+![Table view](docs/screenshots/report_table.png)
+*Table view — dense multi-source data: pricing, follower counts, genres, promoters*
+
+![Swagger UI](docs/screenshots/api_swagger.png)
+*REST API — FastAPI with rate limiting, pagination, CSV export, health checks*
+
+![CI pipeline](docs/screenshots/ci_passing.png)
+*CI pipeline — lint, typecheck, test, and security audit on every push*
 
 ---
 
@@ -316,6 +340,17 @@ railway up
 # Fly.io
 fly launch
 ```
+
+---
+
+## Honest Gaps
+
+Trade-offs and things left undone, stated plainly:
+
+- **No structured logging** — loguru plaintext output; would emit JSON in production for log aggregation
+- **Mocked HTTP in tests** — responses are hand-mocked rather than recorded VCR fixtures, so tests can drift from real API shapes
+- **No scoring feedback loop** — scoring weights are static config; no mechanism to learn from which recommended events were actually attended
+- **Single-process architecture** — parallelism is thread-based within one process; no distributed workers or job queue
 
 ---
 
