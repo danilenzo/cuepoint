@@ -117,3 +117,14 @@ max_masters = 15
 
 [bandcamp]
 max_albums = 5
+
+[learning]
+enabled = true
+api_base = "http://localhost:8000"
+min_feedback = 10
+min_per_class = 3
+multiplier_min = 0.5
+multiplier_max = 2.0
+genre_boost_unit = 500
+genre_boost_cap = 3
+artist_boost = 2000

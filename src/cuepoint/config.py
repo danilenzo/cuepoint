@@ -224,3 +224,40 @@ def dc_ratio_weight() -> int:
 
 def recency_bonus() -> int:
     return _get("scoring", "recency_bonus", 800)
+
+
+# -- Learning (feedback loop) --
+def learning_enabled() -> bool:
+    return _get("learning", "enabled", True)
+
+
+def learning_api_base() -> str:
+    return _get("learning", "api_base", "http://localhost:8000")
+
+
+def learning_min_feedback() -> int:
+    return _get("learning", "min_feedback", 10)
+
+
+def learning_min_per_class() -> int:
+    return _get("learning", "min_per_class", 3)
+
+
+def learning_multiplier_min() -> float:
+    return _get("learning", "multiplier_min", 0.5)
+
+
+def learning_multiplier_max() -> float:
+    return _get("learning", "multiplier_max", 2.0)
+
+
+def learning_genre_boost_unit() -> int:
+    return _get("learning", "genre_boost_unit", 500)
+
+
+def learning_genre_boost_cap() -> int:
+    return _get("learning", "genre_boost_cap", 3)
+
+
+def learning_artist_boost() -> int:
+    return _get("learning", "artist_boost", 2000)
