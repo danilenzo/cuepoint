@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from . import config as cfg
 from .following import is_following
 from .generic import RA
 from .tag_utils import normalize_genre, parse_artist_tags
@@ -383,6 +384,7 @@ def _artist_to_dict(a: dict[str, Any] | None) -> dict[str, Any] | None:
                     pass
 
     return {
+        "id": str(a.get("id", "")),
         "name": a.get("name", ""),
         "scUrl": sc_url,
         "scFollowers": _safe_int(a.get("sc_followers")),
@@ -538,6 +540,7 @@ def create_html(df: Any, stats_html: str = "", scraper_health: list[dict[str, An
     return (
         template.replace("/* __VUE_RUNTIME__ */", vue_js)
         .replace('"__EVENTS_DATA__"', events_json)
+        .replace('"__API_BASE__"', json.dumps(cfg.learning_api_base()))
         .replace("<!-- __STATIC_FALLBACK__ -->", static_table)
         .replace("<!-- __STATS_FOOTER__ -->", stats_html)
     )

@@ -466,6 +466,15 @@
     .match-badge.high { background: var(--green-dim); color: var(--green); }
     .match-badge.mid { background: var(--accent-dim); color: var(--accent); }
     .match-badge.low { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+    /* feedback buttons */
+    .fb-btns { display: inline-flex; gap: 4px; margin-left: 6px; }
+    .fb-btn {
+        font-size: 0.72rem; padding: 2px 8px; border-radius: 10px;
+        border: 1px solid var(--border); background: transparent;
+        color: var(--text-muted); cursor: pointer;
+    }
+    .fb-btn.went.active { color: var(--green); border-color: var(--green); background: rgba(152,195,121,0.12); }
+    .fb-btn.skipped.active { color: var(--red); border-color: var(--red); background: var(--red-dim); }
     /* briefing */
     .briefing { padding: 6px 0 2px; font-size: 12px; line-height: 1.7; }
     .briefing-reason { display: block; color: var(--text-secondary); padding: 1px 0; }
@@ -690,6 +699,10 @@
                         </button>
                         <a :href="ev.eventUrl">{{ ev.title }}</a>
                         <span v-if="ev.matchPct" class="match-badge" :class="matchClass(ev.matchPct)" @click="ev.scoreExpanded = !ev.scoreExpanded" :title="'Score: ' + fmtNum(ev.score)">{{ ev.matchPct }}%</span>
+                        <span class="fb-btns" @click.stop>
+                            <button class="fb-btn went" :class="{active: feedback[ev.id] === 'went'}" @click="setFeedback(ev, 'went')">Went</button>
+                            <button class="fb-btn skipped" :class="{active: feedback[ev.id] === 'skipped'}" @click="setFeedback(ev, 'skipped')">Skipped</button>
+                        </span>
                         <div v-if="ev.scoreExpanded">
                             <div v-if="ev.briefing.length" class="briefing">
                                 <span v-for="(r, i) in ev.briefing" :key="i" class="briefing-reason">{{ r }}</span>
@@ -797,6 +810,10 @@
                     <div class="card-overlay-title">
                         <a :href="ev.eventUrl">{{ ev.title }}</a>
                         <span v-if="ev.matchPct" class="match-badge" :class="matchClass(ev.matchPct)" @click.stop="ev.scoreExpanded = !ev.scoreExpanded; if (isMobile && !ev.cardExpanded) ev.cardExpanded = true">{{ ev.matchPct }}%</span>
+                        <span class="fb-btns" @click.stop>
+                            <button class="fb-btn went" :class="{active: feedback[ev.id] === 'went'}" @click.stop="setFeedback(ev, 'went')">Went</button>
+                            <button class="fb-btn skipped" :class="{active: feedback[ev.id] === 'skipped'}" @click.stop="setFeedback(ev, 'skipped')">Skipped</button>
+                        </span>
                     </div>
                     <div class="card-overlay-venue">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -912,6 +929,60 @@ createApp({
         const genreDropdownOpen = ref(false);
         const selectedGenres = ref([]);
         const genreDropdown = ref(null);
+
+        // --- feedback loop ---
+        const API_BASE = "__API_BASE__";
+        const FB_KEY = 'cuepoint_feedback';
+        function loadFbStore() {
+            try { return JSON.parse(localStorage.getItem(FB_KEY)) || {}; } catch (e) { return {}; }
+        }
+        function saveFbStore(s) {
+            try { localStorage.setItem(FB_KEY, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
+        }
+        const fbStore = loadFbStore();
+        const feedback = reactive({});
+        Object.keys(fbStore).forEach(k => { feedback[k] = fbStore[k].verdict; });
+
+        async function syncFeedback() {
+            const pending = Object.entries(fbStore).filter(([, v]) => !v.synced);
+            if (!pending.length) return;
+            const payload = pending.map(([event_id, v]) => ({
+                event_id,
+                verdict: v.verdict,
+                city: v.city || '',
+                title: (v.title || '').slice(0, 256),
+                breakdown: v.breakdown || {},
+                genres: v.genres || [],
+                artist_ids: v.artist_ids || [],
+            }));
+            try {
+                const r = await fetch(API_BASE + '/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (r.ok) {
+                    pending.forEach(([k]) => { fbStore[k].synced = true; });
+                    saveFbStore(fbStore);
+                }
+            } catch (e) { /* API unreachable — retry on next report load */ }
+        }
+
+        function setFeedback(ev, verdict) {
+            fbStore[ev.id] = {
+                verdict,
+                city: ev.city || '',
+                title: ev.title || '',
+                ts: new Date().toISOString(),
+                synced: false,
+                breakdown: Object.fromEntries(ev.scoreBreakdown.map(s => [s.key, s.value])),
+                genres: ev.genres.map(g => g.name),
+                artist_ids: ev.artists.map(a => a.id).filter(Boolean),
+            };
+            feedback[ev.id] = verdict;
+            saveFbStore(fbStore);
+            syncFeedback();
+        }
 
         const columns = [
             { key: 'time', label: 'Time', w: '8%' },
@@ -1139,7 +1210,7 @@ createApp({
             }
         }
         function onResize() { isMobile.value = window.innerWidth <= 768; }
-        onMounted(() => { document.addEventListener('click', onDocClick, true); window.addEventListener('resize', onResize); });
+        onMounted(() => { document.addEventListener('click', onDocClick, true); window.addEventListener('resize', onResize); syncFeedback(); });
         onUnmounted(() => { document.removeEventListener('click', onDocClick, true); window.removeEventListener('resize', onResize); });
 
         // Keyboard shortcuts
@@ -1157,6 +1228,7 @@ createApp({
             sortBy, toggleView, toggleGenreChip, toggleCard,
             formatDate, formatTimeRange, fmtNum, matchClass, formatTickets, cleanTicketTitle,
             downloadSingleICS, exportICS,
+            feedback, setFeedback,
         };
     }
 }).mount('#app');
