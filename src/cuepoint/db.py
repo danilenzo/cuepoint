@@ -401,8 +401,7 @@ def get_all_feedback() -> list[dict[str, Any]]:
     """Return all feedback rows with JSON fields parsed. Malformed rows are skipped."""
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT event_id, city, verdict, event_title, breakdown, genres, artist_ids, recorded_at "
-        "FROM event_feedback"
+        "SELECT event_id, city, verdict, event_title, breakdown, genres, artist_ids, recorded_at FROM event_feedback"
     ).fetchall()
     out: list[dict[str, Any]] = []
     for row in rows:
