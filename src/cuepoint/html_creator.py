@@ -350,6 +350,8 @@ _BREAKDOWN_LABELS = {
     "shared_labels": "Shared Labels",
     "recency": "Release Recency",
     "ra_genre": "RA Genre Match",
+    "genre_affinity": "Genre Affinity (learned)",
+    "artist_affinity": "Artist Affinity (learned)",
 }
 
 
