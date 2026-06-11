@@ -44,6 +44,7 @@ Give it a list of cities and a date range — it fetches every upcoming event fr
 - **Circuit breaker** — tracks SoundCloud 403 failure ratio, trips at 60% of 8+ requests; pipeline continues with Discogs/Bandcamp data rather than stalling
 - **Dual SoundCloud auth** — OAuth 2.1 when configured, automatic fallback to scraped `client_id` from JS bundles
 - **CI pipeline** — lint, typecheck, test, and security audit on every push
+- **Scoring feedback loop** — Went/Skipped verdicts from the report tune signal weights (clamped multipliers, cold-start gated) and accumulate genre/artist boosts; offline-capable via localStorage queue
 
 ---
 
@@ -110,6 +111,8 @@ Interactive docs at `http://localhost:8000/docs` (Swagger UI).
 | `GET` | `/results/{city}/export` | Download results as CSV |
 | `GET` | `/health` | Readiness check (DB status, version) |
 | `GET` | `/cities` | List available city keys |
+| `POST` | `/feedback` | Record Went/Skipped verdicts (single or batch) |
+| `GET` | `/feedback/stats` | Feedback counts and learned adjustments |
 
 **Features:** pagination, rate limiting (5 scans/60s per IP), persistent SQLite storage, CSV export, health checks for container orchestration.
 
@@ -349,7 +352,6 @@ Trade-offs and things left undone, stated plainly:
 
 - **No structured logging** — loguru plaintext output; would emit JSON in production for log aggregation
 - **Mocked HTTP in tests** — responses are hand-mocked rather than recorded VCR fixtures, so tests can drift from real API shapes
-- **No scoring feedback loop** — scoring weights are static config; no mechanism to learn from which recommended events were actually attended
 - **Single-process architecture** — parallelism is thread-based within one process; no distributed workers or job queue
 
 ---

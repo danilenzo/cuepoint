@@ -1,7 +1,7 @@
 # Scoring Feedback Loop — Design
 
 Date: 2026-06-11
-Status: approved for planning
+Status: implemented
 
 ## Problem
 
@@ -192,3 +192,14 @@ Mocked pytest, matching existing patterns:
 - No feedback decay/windowing in v1.
 - No skip-penalty for artists.
 - No GUI (CustomTkinter) integration in v1 — report + API + CLI only.
+
+## Implementation deviations
+
+1. No migration 4 — `db.init_db()` runs `CREATE TABLE IF NOT EXISTS` on every process
+   start, which covers new tables for fresh and existing DBs alike; the numbered
+   migration system is only needed for altering existing tables.
+2. Adjustments are computed inside `sort_df()` (shared by CLI and API paths) instead of
+   at a cached "scan entry" hook — O(feedback rows) per sort is trivial at personal
+   volume and removes cache-invalidation complexity.
+3. No explicit 16KB byte cap on `POST /feedback` — Pydantic field constraints plus the
+   100-item batch cap bound the payload tighter than a byte check.
