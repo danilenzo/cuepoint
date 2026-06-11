@@ -16,6 +16,10 @@ class TestNormalizeGenre:
     def test_title_cases_unknown(self):
         assert normalize_genre("hard trance") == "Hard Trance"
 
+    def test_strips_whitespace(self):
+        assert normalize_genre("  Ambient  ") == "Ambient"
+        assert normalize_genre("techno") == "Techno"
+
     def test_rejects_empty_long_and_non_latin(self):
         assert normalize_genre("") is None
         assert normalize_genre("x" * 31) is None
