@@ -27,7 +27,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -71,7 +71,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
+    # "null" allows the HTML report opened via file:// to POST feedback back.
+    # Accepted trade-off for a localhost personal tool (see design spec).
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000", "null"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -116,22 +118,26 @@ _RATE_LIMIT_WINDOW = 60  # seconds
 _RATE_LIMIT_MAX = 5  # max POST /scan per window per IP
 _rate_log: dict[str, list[float]] = {}
 _rate_lock = asyncio.Lock()
+_FEEDBACK_RATE_MAX = 60  # max POST /feedback per window per IP
+_feedback_rate_log: dict[str, list[float]] = {}
 
 
-async def _check_rate_limit(client_ip: str) -> bool:
+async def _check_rate_limit(
+    client_ip: str,
+    *,
+    log: dict[str, list[float]] | None = None,
+    max_per_window: int = _RATE_LIMIT_MAX,
+) -> bool:
     """Return True if the request is allowed."""
+    rate_log = _rate_log if log is None else log
     now = time.monotonic()
     async with _rate_lock:
-        timestamps = [t for t in _rate_log.get(client_ip, []) if now - t < _RATE_LIMIT_WINDOW]
-        if len(timestamps) >= _RATE_LIMIT_MAX:
-            _rate_log[client_ip] = timestamps
+        timestamps = [t for t in rate_log.get(client_ip, []) if now - t < _RATE_LIMIT_WINDOW]
+        if len(timestamps) >= max_per_window:
+            rate_log[client_ip] = timestamps
             return False
         timestamps.append(now)
-        if timestamps:
-            _rate_log[client_ip] = timestamps
-        else:
-            # No recent activity — remove the entry entirely to avoid unbounded growth
-            _rate_log.pop(client_ip, None)
+        rate_log[client_ip] = timestamps
         return True
 
 
@@ -564,6 +570,16 @@ async def export_html_report(city: str) -> HTMLResponse:
     )
 
 
+class FeedbackItem(BaseModel):
+    event_id: str = Field(..., min_length=1, max_length=64)
+    verdict: Literal["went", "skipped"]
+    city: str = Field(default="", max_length=64)
+    title: str = Field(default="", max_length=256)
+    breakdown: dict[str, float] = Field(default_factory=dict)
+    genres: list[str] = Field(default_factory=list, max_length=50)
+    artist_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
 class SyncFollowingRequest(BaseModel):
     profile_url: str = Field(..., description="SoundCloud profile URL, e.g. https://soundcloud.com/username")
 
@@ -590,3 +606,47 @@ async def sync_following(req: SyncFollowingRequest) -> dict[str, Any]:
         raise HTTPException(
             status_code=500, detail="Failed to sync following list. SoundCloud may be rate-limiting."
         ) from None
+
+
+@app.post("/feedback")
+async def post_feedback(
+    items: FeedbackItem | list[FeedbackItem],
+    request: Request,
+    _: None = Depends(_check_api_key),
+) -> dict[str, int]:
+    """Record Went/Skipped verdicts from the HTML report (single item or batch)."""
+    batch = items if isinstance(items, list) else [items]
+    if len(batch) > 100:
+        raise HTTPException(status_code=413, detail="Batch too large (max 100)")
+    client_ip = request.client.host if request.client else "unknown"
+    if not await _check_rate_limit(client_ip, log=_feedback_rate_log, max_per_window=_FEEDBACK_RATE_MAX):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    for item in batch:
+        store.save_feedback(
+            item.event_id,
+            item.city,
+            item.verdict,
+            event_title=item.title,
+            breakdown=item.breakdown,
+            genres=item.genres,
+            artist_ids=item.artist_ids,
+        )
+    return {"saved": len(batch)}
+
+
+@app.get("/feedback/stats")
+async def feedback_stats(_: None = Depends(_check_api_key)) -> dict[str, Any]:
+    """Current feedback counts and learned adjustments."""
+    from .learning import compute_adjustments
+
+    counts = store.count_feedback()
+    adj = compute_adjustments()
+    top_genres = dict(sorted(adj.genre_boosts.items(), key=lambda x: -abs(x[1]))[:20])
+    return {
+        "counts": counts,
+        "total": sum(counts.values()),
+        "multipliers": adj.multipliers,
+        "multipliers_active": bool(adj.multipliers),
+        "genre_boosts": top_genres,
+        "artist_boost_count": len(adj.artist_boosts),
+    }
