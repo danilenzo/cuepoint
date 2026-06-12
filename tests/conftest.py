@@ -24,7 +24,7 @@ def sample_artist_info():
         "soundcloud": "/test-artist",
         "discogs": "/artist/12345-Test-Artist",
         "contentUrl": "/dj/testart",
-        "country": "DE",
+        "country": {"name": "DE"},
         "sc_followers": 5000,
         "sc_following": 200,
         "sc_tags": json.dumps(["Techno", "Dark Techno", "Industrial"]),
