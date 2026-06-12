@@ -538,11 +538,13 @@
     }
     .detail-panel {
         background: rgba(20,23,33,0.92);
-        width: 100%; max-height: 92dvh; overflow-y: auto;
+        width: 100%; max-height: 92vh; max-height: 92dvh; overflow-y: auto;
         border-radius: var(--radius-card) var(--radius-card) 0 0;
         position: relative;
         padding-bottom: env(safe-area-inset-bottom);
+        overscroll-behavior-y: contain;
     }
+    .detail-panel:focus { outline: none; }
     .detail-handle {
         width: 38px; height: 4px; border-radius: 2px;
         background: rgba(255,255,255,0.25);
@@ -555,6 +557,7 @@
         border: 1px solid var(--glass-border); cursor: pointer;
         font-size: 13px; font-family: inherit;
     }
+    .detail-close::before { content: ''; position: absolute; inset: -8px; }
     .detail-flyer img { width: 100%; display: block; border-radius: 0; max-height: 48vh; object-fit: cover; }
     .detail-flyer.no-flyer {
         height: 120px;
@@ -959,7 +962,7 @@
 
     <!-- Detail view: bottom sheet (mobile) / centered modal (desktop) -->
     <div class="detail-backdrop" v-if="detailEvent" @click.self="closeDetail()">
-        <div class="detail-panel glass" role="dialog" aria-modal="true" :aria-label="detailEvent.title">
+        <div class="detail-panel glass" role="dialog" aria-modal="true" :aria-label="detailEvent.title" tabindex="-1">
             <button class="detail-close" @click="closeDetail()" aria-label="Close">&#10005;</button>
             <div class="detail-handle" aria-hidden="true"></div>
             <div class="detail-flyer" :class="{'no-flyer': !detailEvent.flyer}">
@@ -1292,7 +1295,10 @@ createApp({
             detailEvent.value = ev;
             detailBarsOn.value = false;
             document.body.style.overflow = 'hidden';
-            requestAnimationFrame(() => requestAnimationFrame(() => { detailBarsOn.value = true; }));
+            requestAnimationFrame(() => {
+                const p = document.querySelector('.detail-panel'); if (p) p.focus();
+                requestAnimationFrame(() => { detailBarsOn.value = true; });
+            });
         }
         function closeDetail() {
             detailEvent.value = null;
@@ -1401,6 +1407,7 @@ createApp({
         // Keyboard shortcuts
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape' && detailEvent.value) { closeDetail(); return; }
+            if (detailEvent.value) return;
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             if (e.key === '/') { e.preventDefault(); document.querySelector('.toolbar input[type="text"]').focus(); }
             if (e.key === 'f') { followedOnly.value = !followedOnly.value; }
