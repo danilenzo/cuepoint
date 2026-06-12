@@ -33,10 +33,7 @@ class TestPostFeedback:
         assert rows[0]["verdict"] == "went"
 
     def test_batch(self, client):
-        items = [
-            {"event_id": f"evt-{i}", "verdict": "went" if i % 2 else "skipped"}
-            for i in range(5)
-        ]
+        items = [{"event_id": f"evt-{i}", "verdict": "went" if i % 2 else "skipped"} for i in range(5)]
         r = client.post("/feedback", json=items)
         assert r.status_code == 200
         assert r.json() == {"saved": 5}
@@ -50,9 +47,7 @@ class TestPostFeedback:
         assert r.status_code == 422
 
     def test_non_numeric_breakdown_422(self, client):
-        r = client.post(
-            "/feedback", json={"event_id": "e", "verdict": "went", "breakdown": {"k": "high"}}
-        )
+        r = client.post("/feedback", json={"event_id": "e", "verdict": "went", "breakdown": {"k": "high"}})
         assert r.status_code == 422
 
     def test_oversized_batch_413(self, client):

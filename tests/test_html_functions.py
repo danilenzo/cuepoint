@@ -11,7 +11,6 @@ from cuepoint.html_creator import (
     df_to_venue,
 )
 
-
 # --- df_to_genre ---
 
 
