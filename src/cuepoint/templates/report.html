@@ -81,7 +81,7 @@
     /* --- toolbar --- */
     .toolbar {
         position: sticky; top: 0; z-index: 10;
-        background: rgba(12,14,18,0.85);
+        background: rgba(11,13,20,0.85);
         backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
         border-bottom: 1px solid var(--border);
         padding: 12px clamp(8px, 2vw, 24px);
@@ -183,7 +183,8 @@
     .genre-dropdown-btn:active { transform: scale(0.97); }
     .genre-panel {
         position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
-        background: var(--bg-card); border: 1px solid var(--border-hover);
+        background: rgba(20,23,33,0.92); border: 1px solid var(--border-hover);
+        backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
         border-radius: var(--radius); padding: 6px; margin-top: 0;
         min-width: 220px; max-height: 340px; overflow-y: auto;
         box-shadow: var(--shadow-lg);
