@@ -24,3 +24,9 @@ class TestApiBaseEmbed:
         html = create_html(df)
         assert "setFeedback" in html
         assert "cuepoint_feedback" in html
+
+    def test_csp_allows_feedback_endpoint(self, sample_artist_info, mock_config):
+        df = pd.DataFrame([_make_event_row("evt-1", [sample_artist_info])])
+        html = create_html(df)
+        assert "__CSP_CONNECT_SRC__" not in html
+        assert "connect-src http://localhost:8000;" in html

@@ -541,6 +541,7 @@ def create_html(df: Any, stats_html: str = "", scraper_health: list[dict[str, An
         template.replace("/* __VUE_RUNTIME__ */", vue_js)
         .replace('"__EVENTS_DATA__"', events_json)
         .replace('"__API_BASE__"', json.dumps(cfg.learning_api_base()))
+        .replace("__CSP_CONNECT_SRC__", cfg.learning_api_base() or "'none'")
         .replace("<!-- __STATIC_FALLBACK__ -->", static_table)
         .replace("<!-- __STATS_FOOTER__ -->", stats_html)
     )
