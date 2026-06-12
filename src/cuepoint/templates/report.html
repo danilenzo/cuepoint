@@ -7,16 +7,19 @@
 <title>cuepoint</title>
 <style>
     :root {
-        --bg-primary: #0c0e12;
-        --bg-secondary: #13161c;
-        --bg-card: #181c24;
-        --bg-elevated: #1e2330;
-        --bg-hover: #252b38;
-        --border: rgba(255,255,255,0.06);
-        --border-hover: rgba(255,255,255,0.12);
-        --text-primary: #e4e6eb;
-        --text-secondary: #8b92a0;
-        --text-muted: #555d6e;
+        --bg-primary: #0b0d14;
+        --bg-secondary: #11141c;
+        --bg-card: rgba(255,255,255,0.05);
+        --bg-elevated: rgba(255,255,255,0.07);
+        --bg-hover: rgba(255,255,255,0.10);
+        --border: rgba(255,255,255,0.07);
+        --border-hover: rgba(255,255,255,0.14);
+        --glass: rgba(255,255,255,0.05);
+        --glass-strong: rgba(255,255,255,0.09);
+        --glass-border: rgba(255,255,255,0.10);
+        --text-primary: #eef0f6;
+        --text-secondary: #8d94ab;
+        --text-muted: #5a617a;
         --accent: #4a9eff;
         --accent-dim: rgba(74,158,255,0.12);
         --accent-glow: rgba(74,158,255,0.25);
@@ -24,21 +27,26 @@
         --green-dim: rgba(126,200,126,0.10);
         --red: #e06c75;
         --red-dim: rgba(224,108,117,0.12);
-        --purple: #c678dd;
+        --purple: #a855f7;
         --orange: #d19a66;
         --cyan: #56b6c2;
-        --radius: 12px;
-        --radius-sm: 8px;
-        --radius-xs: 4px;
+        --grad-score: linear-gradient(135deg, #4a9eff, #a855f7);
+        --radius: 16px;
+        --radius-sm: 10px;
+        --radius-xs: 6px;
+        --radius-pill: 999px;
+        --radius-card: 20px;
+        --blur: blur(24px) saturate(1.4);
         --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
         --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
         --shadow-lg: 0 8px 32px rgba(0,0,0,0.45);
+        --shadow-badge: 0 2px 10px rgba(120,90,255,0.5);
         --transition-fast: 150ms ease;
         --transition-base: 200ms ease;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-        font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         background: var(--bg-primary); color: var(--text-primary);
         padding: 0; min-height: 100vh; min-height: 100dvh;
         padding-left: env(safe-area-inset-left);
@@ -47,6 +55,21 @@
         -webkit-text-size-adjust: 100%;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+    }
+    body::before, body::after {
+        content: ''; position: fixed; inset: 0;
+        pointer-events: none; z-index: -1;
+    }
+    body::before {
+        background: radial-gradient(600px 480px at 85% -5%, rgba(88,60,200,0.22), transparent 60%);
+    }
+    body::after {
+        background: radial-gradient(700px 540px at -10% 85%, rgba(40,90,200,0.15), transparent 60%);
+    }
+    .glass {
+        background: var(--glass);
+        backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+        border: 1px solid var(--glass-border);
     }
     :focus-visible {
         outline: 2px solid var(--accent);

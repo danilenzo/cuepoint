@@ -1,0 +1,31 @@
+"""Template assertions for the Refined Glass redesign."""
+
+import pandas as pd
+
+from cuepoint.html_creator import create_html
+from tests.conftest import _make_event_row
+
+
+def _render(sample_artist_info):
+    df = pd.DataFrame([_make_event_row("evt-1", [sample_artist_info])])
+    return create_html(df)
+
+
+class TestGlassTokens:
+    def test_new_tokens_present(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        for token in ("--glass:", "--glass-strong:", "--glass-border:",
+                      "--grad-score:", "--radius-pill:", "--radius-card:", "--blur:"):
+            assert token in html, f"missing token {token}"
+
+    def test_base_palette(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "#0b0d14" in html          # new page base
+        assert "#a855f7" in html          # new purple
+        assert "rgba(88,60,200,0.22)" in html  # violet ambient glow
+
+    def test_substitution_markers_survive(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert '"__EVENTS_DATA__"' not in html
+        assert "__CSP_CONNECT_SRC__" not in html
+        assert "/* __VUE_RUNTIME__ */" not in html
