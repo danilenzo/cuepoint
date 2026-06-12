@@ -105,6 +105,10 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
             nonlocal total
             val *= _adj.multiplier(key)
             total += val
+            # Breakdown records the post-multiplier value so the report's
+            # numbers sum to the score. Feedback therefore trains on already
+            # adjusted shares, which can self-reinforce a boosted signal; the
+            # per-round multiplier clamp bounds the drift.
             if breakdown is not None and val:
                 breakdown[key] = breakdown.get(key, 0) + val
 
@@ -167,6 +171,10 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
             if breakdown is not None:
                 breakdown["ra_genre"] = ra_genre_val
 
+        # Boosts were learned from the report's *displayed* genres (count >= 2,
+        # top-5 capped) but apply to the full normalized tag set here, so an
+        # event can match on a genre that never appeared in a report. Biases
+        # toward recall; intentional, not a bug.
         if _adj.genre_boosts:
             names: set[str] = set()
             for a in row["artists_info"]:

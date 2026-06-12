@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import math
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -493,6 +494,17 @@ def _df_to_json(df: Any) -> list[dict[str, Any]]:
     return events
 
 
+def _csp_connect_src(api_base: str) -> str:
+    """CSP source for the feedback API; 'none' unless it is a plain http(s) origin.
+
+    Substituted raw into the CSP meta tag, so reject anything that could break
+    out of the attribute or smuggle extra directives.
+    """
+    if re.fullmatch(r"https?://[A-Za-z0-9.-]+(:\d{1,5})?", api_base or ""):
+        return api_base
+    return "'none'"
+
+
 def _build_static_fallback(df: Any) -> str:
     """Build a static HTML table as fallback when Vue can't run (iOS previews, no-JS)."""
     rows = []
@@ -541,7 +553,7 @@ def create_html(df: Any, stats_html: str = "", scraper_health: list[dict[str, An
         template.replace("/* __VUE_RUNTIME__ */", vue_js)
         .replace('"__EVENTS_DATA__"', events_json)
         .replace('"__API_BASE__"', json.dumps(cfg.learning_api_base()))
-        .replace("__CSP_CONNECT_SRC__", cfg.learning_api_base() or "'none'")
+        .replace("__CSP_CONNECT_SRC__", _csp_connect_src(cfg.learning_api_base()))
         .replace("<!-- __STATIC_FALLBACK__ -->", static_table)
         .replace("<!-- __STATS_FOOTER__ -->", stats_html)
     )

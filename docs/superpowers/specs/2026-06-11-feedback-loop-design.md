@@ -107,6 +107,11 @@ report load
   Signal absent everywhere → ε/ε = 1.0, neutral.
 - Cold start: multipliers stay 1.0 until ≥ `min_feedback` total rows AND ≥ `min_per_class`
   rows per verdict.
+- Known limitation: the report's breakdown is recorded *post-multiplier* (so displayed
+  numbers sum to the score), so once multipliers are active, later feedback trains on
+  already-adjusted shares — a boosted signal can self-reinforce. The per-round
+  `[multiplier_min, multiplier_max]` clamp bounds the drift; learning from raw
+  contributions would require storing a second, pre-multiplier breakdown.
 
 ### Genre boosts (active immediately, no threshold)
 

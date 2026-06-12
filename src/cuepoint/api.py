@@ -571,7 +571,7 @@ async def export_html_report(city: str) -> HTMLResponse:
 
 
 class FeedbackItem(BaseModel):
-    event_id: str = Field(..., min_length=1, max_length=64)
+    event_id: str = Field(..., min_length=1, max_length=128)
     verdict: Literal["went", "skipped"]
     city: str = Field(default="", max_length=64)
     title: str = Field(default="", max_length=256)
@@ -612,9 +612,13 @@ async def sync_following(req: SyncFollowingRequest) -> dict[str, Any]:
 async def post_feedback(
     items: FeedbackItem | list[FeedbackItem],
     request: Request,
-    _: None = Depends(_check_api_key),
 ) -> dict[str, int]:
-    """Record Went/Skipped verdicts from the HTML report (single item or batch)."""
+    """Record Went/Skipped verdicts from the HTML report (single item or batch).
+
+    Deliberately unauthenticated: the report runs from file:// and cannot send
+    an Authorization header, so an API key would silently break feedback sync.
+    Abuse is bounded by the rate limit and the low value of the data.
+    """
     batch = items if isinstance(items, list) else [items]
     if len(batch) > 100:
         raise HTTPException(status_code=413, detail="Batch too large (max 100)")
