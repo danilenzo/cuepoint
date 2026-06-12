@@ -29,3 +29,11 @@ class TestGlassTokens:
         assert '"__EVENTS_DATA__"' not in html
         assert "__CSP_CONNECT_SRC__" not in html
         assert "/* __VUE_RUNTIME__ */" not in html
+
+
+class TestIOSMeta:
+    def test_home_screen_meta_tags(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert '<meta name="apple-mobile-web-app-capable" content="yes">' in html
+        assert 'apple-mobile-web-app-status-bar-style" content="black-translucent"' in html
+        assert '<meta name="theme-color" content="#0b0d14">' in html
