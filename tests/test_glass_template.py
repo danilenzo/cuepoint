@@ -49,3 +49,25 @@ class TestRankedArtists:
         html = _render(sample_artist_info)
         assert "cardArtists(ev)" in html
         assert "lineup-more" in html  # passive "+N more" label class
+
+
+class TestDetailView:
+    def test_detail_markup_present(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "detail-backdrop" in html
+        assert "detail-panel" in html
+        assert "Why this matches you" in html
+        assert "openDetail" in html
+        assert "closeDetail" in html
+
+    def test_detail_action_row(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "detail-actions" in html
+        # feedback contract intact
+        assert "setFeedback" in html
+        assert "fb-btn" in html
+
+    def test_card_accordion_removed(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "card-expand-hint" not in html
+        assert "cardExpanded" not in html

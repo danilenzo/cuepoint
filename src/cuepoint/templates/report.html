@@ -529,6 +529,81 @@
         font-size: 16px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;
     }
     .empty-state p { font-size: 13px; max-width: 320px; margin: 0 auto; line-height: 1.5; }
+    /* --- detail view --- */
+    .detail-backdrop {
+        position: fixed; inset: 0; z-index: 50;
+        background: rgba(8,9,14,0.6);
+        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        display: flex; align-items: flex-end; justify-content: center;
+    }
+    .detail-panel {
+        background: rgba(20,23,33,0.92);
+        width: 100%; max-height: 92dvh; overflow-y: auto;
+        border-radius: var(--radius-card) var(--radius-card) 0 0;
+        position: relative;
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    .detail-handle {
+        width: 38px; height: 4px; border-radius: 2px;
+        background: rgba(255,255,255,0.25);
+        margin: 10px auto 0;
+    }
+    .detail-close {
+        position: absolute; top: 12px; right: 12px; z-index: 2;
+        width: 32px; height: 32px; border-radius: var(--radius-pill);
+        background: rgba(8,9,14,0.55); color: var(--text-primary);
+        border: 1px solid var(--glass-border); cursor: pointer;
+        font-size: 13px; font-family: inherit;
+    }
+    .detail-flyer img { width: 100%; display: block; border-radius: 0; max-height: 48vh; object-fit: cover; }
+    .detail-flyer.no-flyer {
+        height: 120px;
+        background: linear-gradient(160deg,#3d2a6e 0%,#1b2440 55%,#0e1626 100%);
+    }
+    .detail-content { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 16px; }
+    .detail-date { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+    .detail-title { font-size: 21px; font-weight: 700; letter-spacing: -0.3px; margin: 4px 0; }
+    .detail-venue { font-size: 13px; color: var(--text-secondary); }
+    .detail-genres { margin-top: 8px; }
+    .why-panel {
+        background: linear-gradient(135deg, rgba(74,158,255,0.10), rgba(168,85,247,0.10));
+        border: 1px solid rgba(120,140,255,0.2);
+        border-radius: var(--radius); padding: 12px 14px;
+    }
+    .why-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .why-title { font-size: 13px; font-weight: 700; }
+    .score-badge {
+        background: var(--grad-score); color: #fff;
+        border-radius: var(--radius-pill); padding: 3px 12px;
+        font-size: 13px; font-weight: 800; box-shadow: var(--shadow-badge);
+        font-variant-numeric: tabular-nums;
+    }
+    .why-panel .sb-bar-fill { transition: width 600ms cubic-bezier(0.22, 1, 0.36, 1); }
+    .detail-actions {
+        display: flex; gap: 8px; flex-wrap: wrap;
+        position: sticky; bottom: 0; padding: 12px 0 4px;
+        background: linear-gradient(transparent, rgba(20,23,33,0.95) 35%);
+    }
+    .detail-actions .fb-btn, .detail-actions .act-btn {
+        flex: 1; min-height: 44px; font-size: 13px; font-weight: 600;
+        border-radius: var(--radius-pill); border: 1px solid var(--glass-border);
+        background: var(--glass-strong); color: var(--text-primary);
+        cursor: pointer; font-family: inherit; text-align: center;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    @media (min-width: 768px) {
+        .detail-backdrop { align-items: center; padding: 24px; }
+        .detail-panel {
+            max-width: 880px; max-height: 86vh;
+            border-radius: var(--radius-card);
+            display: grid; grid-template-columns: 40% 1fr;
+        }
+        .detail-handle { display: none; }
+        .detail-flyer { grid-row: 1; }
+        .detail-flyer img { height: 100%; max-height: none; border-radius: var(--radius-card) 0 0 var(--radius-card); }
+        .detail-flyer.no-flyer { height: 100%; border-radius: var(--radius-card) 0 0 var(--radius-card); }
+        .detail-content { overflow-y: auto; max-height: 86vh; }
+    }
     /* kbd hint */
     .kbd {
         display: inline-block; padding: 1px 5px; font-size: 10px;
@@ -561,22 +636,10 @@
     .genre-chip.active.house { background: rgba(97,175,239,0.14); color: #79b8f0; border-color: rgba(97,175,239,0.3); }
     .genre-chip.active.ambient { background: rgba(86,182,194,0.14); color: #6ec8d4; border-color: rgba(86,182,194,0.3); }
     .genre-chip.active.industrial { background: rgba(190,146,100,0.14); color: #c8a87a; border-color: rgba(190,146,100,0.3); }
-    /* card expand/collapse */
+    /* card body */
     .card-body-wrap {
         flex: 1; display: flex; flex-direction: column;
     }
-    .card-body-wrap.collapsed { max-height: 0; opacity: 0; overflow: hidden; }
-    .card-expand-hint {
-        display: none; align-items: center; justify-content: center; gap: 4px;
-        text-align: center; padding: 10px; min-height: 44px;
-        font-size: 12px; color: var(--text-muted); font-family: inherit;
-        border-top: 1px solid var(--border); cursor: pointer;
-        background: none; border-left: none; border-right: none; border-bottom: none;
-        width: 100%; transition: color var(--transition-fast);
-        touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-    }
-    .card-expand-hint:active { color: var(--accent); }
-    .card-expand-hint svg { width: 12px; height: 12px; }
     /* responsive */
     @media (max-width: 1200px) {
         td:nth-child(10), th:nth-child(10) { display: none; }
@@ -630,11 +693,6 @@
         .card-overlay { padding: 16px; }
         .genre-chips { display: flex; }
         .genre-dropdown { display: none; }
-        .card-body-wrap {
-            overflow: hidden; max-height: 800px;
-            transition: max-height 300ms ease-out, opacity 200ms ease;
-        }
-        .card-expand-hint { display: flex; align-items: center; justify-content: center; gap: 4px; }
     }
 </style>
 </head>
@@ -718,7 +776,8 @@
             </thead>
             <tbody>
                 <tr v-for="ev in filteredEvents" :key="ev.id"
-                    :class="{followed: ev.hasFollowed}">
+                    :class="{followed: ev.hasFollowed}"
+                    @click="onEventClick(ev, $event)">
                     <td data-label="time" :data-sort="ev.startTime">
                         <b>{{ formatDate(ev.startTime) }}</b><br>
                         {{ formatTimeRange(ev.startTime, ev.endTime) }}
@@ -729,23 +788,11 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                         </button>
                         <a :href="ev.eventUrl">{{ ev.title }}</a>
-                        <span v-if="ev.matchPct" class="match-badge" :class="matchClass(ev.matchPct)" @click="ev.scoreExpanded = !ev.scoreExpanded" :title="'Score: ' + fmtNum(ev.score)">{{ ev.matchPct }}%</span>
+                        <span v-if="ev.matchPct" class="match-badge" :class="matchClass(ev.matchPct)" @click.stop="openDetail(ev)" :title="'Score: ' + fmtNum(ev.score)">{{ ev.matchPct }}%</span>
                         <span class="fb-btns" @click.stop>
                             <button class="fb-btn went" :class="{active: feedback[ev.id] === 'went'}" @click="setFeedback(ev, 'went')">Went</button>
                             <button class="fb-btn skipped" :class="{active: feedback[ev.id] === 'skipped'}" @click="setFeedback(ev, 'skipped')">Skipped</button>
                         </span>
-                        <div v-if="ev.scoreExpanded">
-                            <div v-if="ev.briefing.length" class="briefing">
-                                <span v-for="(r, i) in ev.briefing" :key="i" class="briefing-reason">{{ r }}</span>
-                            </div>
-                            <div class="score-breakdown" v-if="ev.scoreBreakdown.length">
-                                <div class="sb-row" v-for="s in ev.scoreBreakdown" :key="s.key">
-                                    <span class="sb-label">{{ s.label }}</span>
-                                    <span class="sb-bar"><span class="sb-bar-fill" :class="s.key" :style="{width: Math.min(100, s.value / ev.score * 100) + '%'}"></span></span>
-                                    <span class="sb-val">{{ fmtNum(s.value) }}</span>
-                                </div>
-                            </div>
-                        </div>
                     </td>
                     <td data-label="attenders" :data-sort="ev.attending">{{ fmtNum(ev.attending) }}</td>
                     <td data-label="strength" :data-sort="ev.notableCount">
@@ -828,7 +875,7 @@
     <div class="card-grid" v-if="viewMode === 'card'">
         <div class="event-card" v-for="ev in filteredEvents" :key="ev.id"
              :class="{followed: ev.hasFollowed}"
-             @click="toggleCard(ev, $event)">
+             @click="onEventClick(ev, $event)">
             <div class="card-flyer" :class="{'no-flyer': !ev.flyer}">
                 <img v-if="ev.flyer" :src="ev.flyer" :alt="ev.title" loading="lazy">
                 <button class="cal-btn card-cal" @click.stop="downloadSingleICS(ev)" title="Download .ics" aria-label="Download calendar event">
@@ -840,7 +887,7 @@
                     </div>
                     <div class="card-overlay-title">
                         <a :href="ev.eventUrl">{{ ev.title }}</a>
-                        <span v-if="ev.matchPct" class="match-badge" :class="matchClass(ev.matchPct)" @click.stop="ev.scoreExpanded = !ev.scoreExpanded; if (isMobile && !ev.cardExpanded) ev.cardExpanded = true">{{ ev.matchPct }}%</span>
+                        <span v-if="ev.matchPct" class="match-badge" :class="matchClass(ev.matchPct)" @click.stop="openDetail(ev)">{{ ev.matchPct }}%</span>
                         <span class="fb-btns" @click.stop>
                             <button class="fb-btn went" :class="{active: feedback[ev.id] === 'went'}" @click.stop="setFeedback(ev, 'went')">Went</button>
                             <button class="fb-btn skipped" :class="{active: feedback[ev.id] === 'skipped'}" @click.stop="setFeedback(ev, 'skipped')">Skipped</button>
@@ -856,18 +903,8 @@
                     </div>
                 </div>
             </div>
-            <div class="card-body-wrap" :class="{collapsed: !ev.cardExpanded && isMobile}">
+            <div class="card-body-wrap">
                 <div class="card-body">
-                    <div v-if="ev.scoreExpanded && ev.scoreBreakdown.length" class="score-breakdown" style="margin-bottom:10px;">
-                        <div class="sb-row" v-for="s in ev.scoreBreakdown" :key="s.key">
-                            <span class="sb-label">{{ s.label }}</span>
-                            <span class="sb-bar"><span class="sb-bar-fill" :class="s.key" :style="{width: Math.min(100, s.value / ev.score * 100) + '%'}"></span></span>
-                            <span class="sb-val">{{ fmtNum(s.value) }}</span>
-                        </div>
-                    </div>
-                    <div v-if="ev.briefing.length" class="briefing" style="margin-bottom:10px;">
-                        <span v-for="(r, i) in ev.briefing" :key="i" class="briefing-reason">{{ r }}</span>
-                    </div>
                     <div class="card-strength" v-if="ev.totalArtists && ev.notableCount">
                         Strength: {{ ev.notableCount }}/{{ ev.totalArtists }}
                         <span class="str-track"><span class="str-fill" :style="{width: Math.round(ev.notableCount/ev.totalArtists*100)+'%'}"></span></span>
@@ -912,21 +949,110 @@
                     </div>
                 </div>
             </div>
-            <button class="card-expand-hint" @click.stop="ev.cardExpanded = !ev.cardExpanded" v-if="isMobile" :aria-expanded="ev.cardExpanded" aria-label="Toggle event details">
-                <template v-if="!ev.cardExpanded">
-                    Details
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                </template>
-                <template v-else>
-                    Hide
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                </template>
-            </button>
         </div>
         <div class="empty-state" v-if="!filteredEvents.length">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
             <h3>No events match your filters</h3>
             <p>Try adjusting your search query, genre selection, or disable "Followed only" to see more results.</p>
+        </div>
+    </div>
+
+    <!-- Detail view: bottom sheet (mobile) / centered modal (desktop) -->
+    <div class="detail-backdrop" v-if="detailEvent" @click.self="closeDetail()">
+        <div class="detail-panel glass" role="dialog" aria-modal="true" :aria-label="detailEvent.title">
+            <button class="detail-close" @click="closeDetail()" aria-label="Close">&#10005;</button>
+            <div class="detail-handle" aria-hidden="true"></div>
+            <div class="detail-flyer" :class="{'no-flyer': !detailEvent.flyer}">
+                <img v-if="detailEvent.flyer" :src="detailEvent.flyer" :alt="detailEvent.title">
+            </div>
+            <div class="detail-content">
+                <div class="detail-header">
+                    <div class="detail-date">{{ formatDate(detailEvent.startTime) }} &middot; {{ formatTimeRange(detailEvent.startTime, detailEvent.endTime) }}</div>
+                    <h2 class="detail-title">{{ detailEvent.title }}</h2>
+                    <div class="detail-venue">
+                        <a :href="detailEvent.venueUrl">{{ detailEvent.venueName }}</a>
+                        <span v-if="detailEvent.attending" style="opacity:0.6"> &middot; {{ fmtNum(detailEvent.attending) }} going</span>
+                    </div>
+                    <div class="detail-genres" v-if="detailEvent.genres.length">
+                        <span v-for="g in detailEvent.genres" :key="g.name" :class="'genre-pill ' + g.category">{{ g.name }}</span>
+                    </div>
+                </div>
+
+                <div class="why-panel" v-if="detailEvent.matchPct">
+                    <div class="why-head">
+                        <span class="why-title">Why this matches you</span>
+                        <span class="score-badge">{{ detailEvent.matchPct }}%</span>
+                    </div>
+                    <div class="briefing" v-if="detailEvent.briefing.length">
+                        <span v-for="(r, i) in detailEvent.briefing" :key="i" class="briefing-reason">{{ r }}</span>
+                    </div>
+                    <div class="score-breakdown" v-if="detailEvent.scoreBreakdown.length">
+                        <div class="sb-row" v-for="s in detailEvent.scoreBreakdown" :key="s.key">
+                            <span class="sb-label">{{ s.label }}</span>
+                            <span class="sb-bar"><span class="sb-bar-fill" :class="s.key"
+                                :style="{width: (detailBarsOn ? Math.min(100, s.value / detailEvent.score * 100) : 0) + '%'}"></span></span>
+                            <span class="sb-val">{{ fmtNum(s.value) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-lineup">
+                    <template v-for="(a, idx) in detailArtists" :key="idx">
+                        <div class="floor-label" v-if="a.floor && (idx === 0 || a.floor !== detailArtists[idx-1].floor)">{{ a.floor }}</div>
+                        <div class="artist-row">
+                            <template v-if="a.scUrl">
+                                <a :href="a.scUrl"><b v-if="a.isFollowed">{{ a.name }}</b><span v-else>{{ a.name }}</span></a>
+                            </template>
+                            <span v-else>{{ a.name }}</span>
+                            <span class="artist-stats" v-if="a.scFollowers || a.dcHave || a.bcUrl || a.raFollowers">
+                                <template v-if="a.scFollowers">
+                                    <span :class="a.isFollowed ? 'stat-val followed' : 'stat-label'">SC</span>
+                                    <span class="stat-val">{{ fmtNum(a.scFollowers) }}</span>
+                                </template>
+                                <template v-if="a.dcHave"> &middot; <span class="stat-label">DC</span> <span class="stat-val">{{ fmtNum(a.dcHave) }}</span> <span style="opacity:0.4">r{{ a.dcRatio }}</span></template>
+                                <template v-if="a.bcUrl">
+                                    &middot; <a :href="a.bcUrl" class="stat-label">BC</a>
+                                    <span v-if="a.bcSupporters" class="stat-val">{{ fmtNum(a.bcSupporters) }}</span>
+                                    <span v-if="a.bcLatestRelease" style="opacity:0.4;font-size:0.85em;"> {{ a.bcLatestRelease }}</span>
+                                </template>
+                                <template v-if="a.raFollowers"> &middot; <span style="color:var(--orange);">RA {{ fmtNum(a.raFollowers) }}</span></template>
+                            </span>
+                            <i v-if="a.country" style="color:var(--text-muted);"> ({{ a.country }})</i>
+                            <span v-if="a.rising" class="rising-badge" title="Rising artist">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                            </span>
+                            <span v-if="a.similarTo" class="sim-badge" :title="a.similarityScore + '% similar'">~ {{ a.similarTo }}</span>
+                            <span v-if="a.sharedLabels.length" class="label-badge">[{{ a.sharedLabels.join(', ') }}]</span>
+                            <button class="artist-expand-btn" v-if="a.tags.length" @click="a.expanded = !a.expanded" :aria-expanded="a.expanded" aria-label="Toggle tags">tags</button>
+                            <div class="artist-detail" v-if="a.expanded">
+                                <div class="tag-list"><span class="tag-chip" v-for="t in a.tags" :key="t">{{ t }}</span></div>
+                            </div>
+                        </div>
+                    </template>
+                    <button v-if="detailEvent.artists.length > 6" class="lineup-toggle" @click="detailEvent.lineupExpanded = !detailEvent.lineupExpanded">
+                        {{ detailEvent.lineupExpanded ? 'Show less' : 'Show all ' + detailEvent.artists.length }}
+                    </button>
+                </div>
+
+                <div class="card-tickets" v-if="detailEvent.tickets && detailEvent.tickets.length">
+                    <template v-if="detailEvent.tickets.every(t => t.soldOut)">
+                        <span class="sold-out">SOLD OUT</span>
+                    </template>
+                    <template v-else>
+                        <div class="ticket-row" v-for="t in detailEvent.tickets.filter(t => !t.soldOut).sort((a, b) => a.price - b.price)" :key="t.title">
+                            <span class="ticket-name">{{ cleanTicketTitle(t.title) }}</span>
+                            <span class="ticket-price">{{ t.symbol }}{{ t.price.toFixed(2) }}</span>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="detail-actions">
+                    <button class="fb-btn went" :class="{active: feedback[detailEvent.id] === 'went'}" @click="setFeedback(detailEvent, 'went')">Went</button>
+                    <button class="fb-btn skipped" :class="{active: feedback[detailEvent.id] === 'skipped'}" @click="setFeedback(detailEvent, 'skipped')">Skipped</button>
+                    <button class="act-btn" @click="downloadSingleICS(detailEvent)">+ Calendar</button>
+                    <a class="act-btn" :href="detailEvent.eventUrl">RA &#8599;</a>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -940,8 +1066,6 @@ const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
 const eventsData = reactive("__EVENTS_DATA__".map(ev => {
     ev.artists.forEach(a => { a.expanded = false; });
     ev.lineupExpanded = false;
-    ev.scoreExpanded = false;
-    ev.cardExpanded = false;
     return ev;
 }));
 createApp({
@@ -1161,10 +1285,28 @@ createApp({
             else selectedGenres.value.push(name);
         }
 
-        function toggleCard(ev, e) {
-            if (!isMobile.value) return;
+        // --- detail view ---
+        const detailEvent = ref(null);
+        const detailBarsOn = ref(false);
+        function openDetail(ev) {
+            detailEvent.value = ev;
+            detailBarsOn.value = false;
+            document.body.style.overflow = 'hidden';
+            requestAnimationFrame(() => requestAnimationFrame(() => { detailBarsOn.value = true; }));
+        }
+        function closeDetail() {
+            detailEvent.value = null;
+            document.body.style.overflow = '';
+        }
+        const detailArtists = computed(() => {
+            const ev = detailEvent.value;
+            if (!ev) return [];
+            const ranked = rankedArtists(ev);
+            return ev.lineupExpanded ? ranked : ranked.slice(0, 6);
+        });
+        function onEventClick(ev, e) {
             if (e.target.closest('a, button, input')) return;
-            ev.cardExpanded = !ev.cardExpanded;
+            openDetail(ev);
         }
 
         // Relevance order: followed > rising > everyone; SC followers desc inside
@@ -1258,6 +1400,7 @@ createApp({
 
         // Keyboard shortcuts
         document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && detailEvent.value) { closeDetail(); return; }
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             if (e.key === '/') { e.preventDefault(); document.querySelector('.toolbar input[type="text"]').focus(); }
             if (e.key === 'f') { followedOnly.value = !followedOnly.value; }
@@ -1268,11 +1411,12 @@ createApp({
             searchQuery, followedOnly, sortColumn, sortAsc, viewMode, isMobile,
             genreDropdownOpen, selectedGenres, genreDropdown,
             columns, allGenres, topGenres, filteredEvents, visibleCount, totalCount,
-            sortBy, toggleView, toggleGenreChip, toggleCard,
+            sortBy, toggleView, toggleGenreChip,
             rankedArtists, cardArtists,
             formatDate, formatTimeRange, fmtNum, matchClass, formatTickets, cleanTicketTitle,
             downloadSingleICS, exportICS,
             feedback, setFeedback,
+            detailEvent, detailBarsOn, detailArtists, openDetail, closeDetail, onEventClick,
         };
     }
 }).mount('#app');
