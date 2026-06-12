@@ -1178,7 +1178,11 @@ createApp({
                     (x[1] - y[1]))
                 .map(p => p[0]);
         }
-        function cardArtists(ev) { return rankedArtists(ev).slice(0, 3); }
+        const _cardCache = new WeakMap();
+        function cardArtists(ev) {
+            if (!_cardCache.has(ev)) _cardCache.set(ev, rankedArtists(ev).slice(0, 3));
+            return _cardCache.get(ev);
+        }
 
         function formatTickets(ev) {
             if (!ev.tickets || !ev.tickets.length) return '';
