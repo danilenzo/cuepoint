@@ -1,7 +1,7 @@
 # Scoring Feedback Loop — Design
 
 Date: 2026-06-11
-Status: approved for planning
+Status: implemented
 
 ## Problem
 
@@ -107,6 +107,11 @@ report load
   Signal absent everywhere → ε/ε = 1.0, neutral.
 - Cold start: multipliers stay 1.0 until ≥ `min_feedback` total rows AND ≥ `min_per_class`
   rows per verdict.
+- Known limitation: the report's breakdown is recorded *post-multiplier* (so displayed
+  numbers sum to the score), so once multipliers are active, later feedback trains on
+  already-adjusted shares — a boosted signal can self-reinforce. The per-round
+  `[multiplier_min, multiplier_max]` clamp bounds the drift; learning from raw
+  contributions would require storing a second, pre-multiplier breakdown.
 
 ### Genre boosts (active immediately, no threshold)
 
@@ -192,3 +197,14 @@ Mocked pytest, matching existing patterns:
 - No feedback decay/windowing in v1.
 - No skip-penalty for artists.
 - No GUI (CustomTkinter) integration in v1 — report + API + CLI only.
+
+## Implementation deviations
+
+1. No migration 4 — `db.init_db()` runs `CREATE TABLE IF NOT EXISTS` on every process
+   start, which covers new tables for fresh and existing DBs alike; the numbered
+   migration system is only needed for altering existing tables.
+2. Adjustments are computed inside `sort_df()` (shared by CLI and API paths) instead of
+   at a cached "scan entry" hook — O(feedback rows) per sort is trivial at personal
+   volume and removes cache-invalidation complexity.
+3. No explicit 16KB byte cap on `POST /feedback` — Pydantic field constraints plus the
+   100-item batch cap bound the payload tighter than a byte check.

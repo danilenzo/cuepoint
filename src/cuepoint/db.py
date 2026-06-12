@@ -125,6 +125,18 @@ def init_db() -> None:
             PRIMARY KEY (source, city)
         );
 
+        CREATE TABLE IF NOT EXISTS event_feedback (
+            event_id    TEXT NOT NULL,
+            city        TEXT NOT NULL DEFAULT '',
+            verdict     TEXT NOT NULL CHECK (verdict IN ('went', 'skipped')),
+            event_title TEXT NOT NULL DEFAULT '',
+            breakdown   TEXT NOT NULL DEFAULT '{}',
+            genres      TEXT NOT NULL DEFAULT '[]',
+            artist_ids  TEXT NOT NULL DEFAULT '[]',
+            recorded_at TEXT NOT NULL,
+            PRIMARY KEY (event_id)
+        );
+
         CREATE TABLE IF NOT EXISTS schema_version (
             version    INTEGER PRIMARY KEY,
             applied_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -348,6 +360,82 @@ def get_all_found_lines() -> list[str]:
     conn = _get_conn()
     rows = conn.execute("SELECT line FROM found_events ORDER BY id").fetchall()
     return [row["line"] for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Event feedback (scoring feedback loop)
+# ---------------------------------------------------------------------------
+
+
+def save_feedback(
+    event_id: str,
+    city: str,
+    verdict: str,
+    *,
+    event_title: str = "",
+    breakdown: dict[str, float] | None = None,
+    genres: list[str] | None = None,
+    artist_ids: list[str] | None = None,
+) -> None:
+    """Upsert one feedback verdict. Verdict is enforced by a CHECK constraint."""
+    conn = _get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO event_feedback "
+        "(event_id, city, verdict, event_title, breakdown, genres, artist_ids, recorded_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            str(event_id),
+            city,
+            verdict,
+            event_title,
+            json.dumps(breakdown or {}, ensure_ascii=False),
+            json.dumps(genres or [], ensure_ascii=False),
+            json.dumps(artist_ids or [], ensure_ascii=False),
+            datetime.now().isoformat(),
+        ),
+    )
+    conn.commit()
+
+
+def get_all_feedback() -> list[dict[str, Any]]:
+    """Return all feedback rows with JSON fields parsed. Malformed rows are skipped."""
+    conn = _get_conn()
+    rows = conn.execute(
+        "SELECT event_id, city, verdict, event_title, breakdown, genres, artist_ids, recorded_at FROM event_feedback"
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            out.append(
+                {
+                    "event_id": row["event_id"],
+                    "city": row["city"],
+                    "verdict": row["verdict"],
+                    "event_title": row["event_title"],
+                    "breakdown": json.loads(row["breakdown"]),
+                    "genres": json.loads(row["genres"]),
+                    "artist_ids": json.loads(row["artist_ids"]),
+                    "recorded_at": row["recorded_at"],
+                }
+            )
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.debug(f"Skipping malformed feedback row {row['event_id']}: {e}")
+    return out
+
+
+def count_feedback() -> dict[str, int]:
+    """Return {verdict: count}."""
+    conn = _get_conn()
+    rows = conn.execute("SELECT verdict, COUNT(*) AS c FROM event_feedback GROUP BY verdict").fetchall()
+    return {row["verdict"]: row["c"] for row in rows}
+
+
+def clear_feedback() -> int:
+    """Delete all feedback rows. Returns number deleted."""
+    conn = _get_conn()
+    cur = conn.execute("DELETE FROM event_feedback")
+    conn.commit()
+    return cur.rowcount
 
 
 # ---------------------------------------------------------------------------

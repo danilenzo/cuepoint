@@ -14,7 +14,8 @@ from loguru import logger
 
 from . import config as cfg
 from .following import is_following, record
-from .tag_utils import count_genre_matches, parse_artist_tags
+from .learning import compute_adjustments
+from .tag_utils import count_genre_matches, normalize_genre, parse_artist_tags
 from .types import ArtistInfo
 
 
@@ -87,6 +88,7 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     _genre_set = set(cfg.genre_filter())
+    _adj = compute_adjustments()
 
     def count_techno_in_list(genres: list[str]) -> int:
         return sum(1 for g in genres if g in _genre_set)
@@ -101,7 +103,12 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
 
         def _add(key: str, val: float) -> None:
             nonlocal total
+            val *= _adj.multiplier(key)
             total += val
+            # Breakdown records the post-multiplier value so the report's
+            # numbers sum to the score. Feedback therefore trains on already
+            # adjusted shares, which can self-reinforce a boosted signal; the
+            # per-round multiplier clamp bounds the drift.
             if breakdown is not None and val:
                 breakdown[key] = breakdown.get(key, 0) + val
 
@@ -110,6 +117,10 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
 
         if is_following(artist_info.get("soundcloud")):
             _add("followed", cfg.followed_bonus())
+
+        _aid = str(artist_info.get("id", ""))
+        if _aid and _aid in _adj.artist_boosts:
+            _add("artist_affinity", _adj.artist_boosts[_aid] / divisor)
 
         if "dc_have" in artist_info and artist_info["dc_have"] is not None:
             _add("dc_have", int(artist_info["dc_have"]) * genre_hits / cfg.dc_weight() / divisor)
@@ -154,11 +165,34 @@ def sort_df(df: pd.DataFrame) -> pd.DataFrame:
             total += _score_artist(artist_info, 5, breakdown=breakdown)
 
         ra_genres = [g["name"] for g in row["genres"] if isinstance(g, dict)]
-        ra_genre_val = count_techno_in_list(ra_genres) * cfg.ra_genre_bonus()
+        ra_genre_val = count_techno_in_list(ra_genres) * cfg.ra_genre_bonus() * _adj.multiplier("ra_genre")
         if ra_genre_val:
             total += ra_genre_val
             if breakdown is not None:
                 breakdown["ra_genre"] = ra_genre_val
+
+        # Boosts were learned from the report's *displayed* genres (count >= 2,
+        # top-5 capped) but apply to the full normalized tag set here, so an
+        # event can match on a genre that never appeared in a report. Biases
+        # toward recall; intentional, not a bug.
+        if _adj.genre_boosts:
+            names: set[str] = set()
+            for a in row["artists_info"]:
+                if a is not None:
+                    for t in parse_artist_tags(a):
+                        norm = normalize_genre(t)
+                        if norm:
+                            names.add(norm)
+            for g in row["genres"]:
+                if isinstance(g, dict):
+                    norm = normalize_genre(g["name"])
+                    if norm:
+                        names.add(norm)
+            affinity = sum(_adj.genre_boosts.get(n, 0.0) for n in names)
+            if affinity:
+                total += affinity
+                if breakdown is not None:
+                    breakdown["genre_affinity"] = affinity
 
         return total
 

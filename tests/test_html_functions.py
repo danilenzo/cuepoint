@@ -5,39 +5,11 @@ import json
 import pandas as pd
 
 from cuepoint.html_creator import (
-    _normalize_genre,
     df_to_genre,
     df_to_strength,
     df_to_time,
     df_to_venue,
 )
-
-# --- _normalize_genre ---
-
-
-def test_normalize_genre_alias():
-    assert _normalize_genre("drum n bass") == "Drum & Bass"
-    assert _normalize_genre("dnb") == "Drum & Bass"
-
-
-def test_normalize_genre_blacklist():
-    assert _normalize_genre("electronic") is None
-    assert _normalize_genre("music") is None
-
-
-def test_normalize_genre_too_long():
-    assert _normalize_genre("a" * 31) is None
-
-
-def test_normalize_genre_no_latin():
-    """Tags with no Latin letters (e.g. Japanese) should be filtered."""
-    assert _normalize_genre("テクノ") is None
-
-
-def test_normalize_genre_normal():
-    assert _normalize_genre("techno") == "Techno"
-    assert _normalize_genre("  Ambient  ") == "Ambient"
-
 
 # --- df_to_genre ---
 

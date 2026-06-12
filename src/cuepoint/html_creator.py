@@ -8,9 +8,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from . import config as cfg
 from .following import is_following
 from .generic import RA
-from .tag_utils import parse_artist_tags
+from .tag_utils import normalize_genre, parse_artist_tags
 
 _VUE_PATH = Path(__file__).parent / "vendor" / "vue.global.prod.js"
 _TEMPLATE_PATH = Path(__file__).parent / "templates" / "report.html"
@@ -42,49 +43,7 @@ def df_to_venue(row: Any) -> str:
     return f"""<a href="{link}">{title}</a>"""
 
 
-_GENRE_BLACKLIST = {
-    "electronic",
-    "music",
-    "dance",
-    "club",
-    "other",
-    "experimental",
-    "alternative",
-    "indie",
-    "pop",
-    "rock",
-    "hip-hop",
-    "hip hop",
-}
-
-_GENRE_ALIASES = {
-    "drum n bass": "Drum & Bass",
-    "drum and bass": "Drum & Bass",
-    "dnb": "Drum & Bass",
-    "d&b": "Drum & Bass",
-    "deep techno": "Techno",
-    "hard techno": "Hard Techno",
-    "detroit techno": "Detroit Techno",
-}
-
 _MAX_GENRES = 5
-
-
-def _normalize_genre(name: str) -> str | None:
-    """Lowercase, apply alias map, filter filler tags and non-genre strings."""
-    stripped = name.strip()
-    if not stripped or len(stripped) > 30:
-        return None
-    # Drop tags with no Latin letters (Japanese, Chinese, Arabic, etc.)
-    if not re.search(r"[a-zA-Z]", stripped):
-        return None
-    low = stripped.lower()
-    if low in _GENRE_BLACKLIST:
-        return None
-    canonical = _GENRE_ALIASES.get(low)
-    if canonical:
-        return canonical
-    return stripped.title()
 
 
 def _categorize_genre(name: str) -> str:
@@ -116,7 +75,7 @@ def _collect_genre_counts(row: Any) -> tuple[list[tuple[str, int, str]], int]:
 
     counts: Counter[str] = Counter()
     for g in raw:
-        norm = _normalize_genre(g)
+        norm = normalize_genre(g)
         if norm:
             counts[norm] += 1
 
@@ -393,6 +352,8 @@ _BREAKDOWN_LABELS = {
     "shared_labels": "Shared Labels",
     "recency": "Release Recency",
     "ra_genre": "RA Genre Match",
+    "genre_affinity": "Genre Affinity (learned)",
+    "artist_affinity": "Artist Affinity (learned)",
 }
 
 
@@ -424,6 +385,7 @@ def _artist_to_dict(a: dict[str, Any] | None) -> dict[str, Any] | None:
                     pass
 
     return {
+        "id": str(a.get("id", "")),
         "name": a.get("name", ""),
         "scUrl": sc_url,
         "scFollowers": _safe_int(a.get("sc_followers")),
@@ -532,6 +494,17 @@ def _df_to_json(df: Any) -> list[dict[str, Any]]:
     return events
 
 
+def _csp_connect_src(api_base: str) -> str:
+    """CSP source for the feedback API; 'none' unless it is a plain http(s) origin.
+
+    Substituted raw into the CSP meta tag, so reject anything that could break
+    out of the attribute or smuggle extra directives.
+    """
+    if re.fullmatch(r"https?://[A-Za-z0-9.-]+(:\d{1,5})?", api_base or ""):
+        return api_base
+    return "'none'"
+
+
 def _build_static_fallback(df: Any) -> str:
     """Build a static HTML table as fallback when Vue can't run (iOS previews, no-JS)."""
     rows = []
@@ -579,6 +552,8 @@ def create_html(df: Any, stats_html: str = "", scraper_health: list[dict[str, An
     return (
         template.replace("/* __VUE_RUNTIME__ */", vue_js)
         .replace('"__EVENTS_DATA__"', events_json)
+        .replace('"__API_BASE__"', json.dumps(cfg.learning_api_base()))
+        .replace("__CSP_CONNECT_SRC__", _csp_connect_src(cfg.learning_api_base()))
         .replace("<!-- __STATIC_FALLBACK__ -->", static_table)
         .replace("<!-- __STATS_FOOTER__ -->", stats_html)
     )

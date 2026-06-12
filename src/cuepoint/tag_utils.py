@@ -9,10 +9,53 @@ on the dict as _parsed_tags / _parsed_tag_set / _parsed_labels.
 from __future__ import annotations
 
 import json
+import re
 
 from .types import ArtistInfo
 
 _TAG_KEYS = ("sc_tags", "dc_styles", "bc_tags")
+
+GENRE_BLACKLIST = {
+    "electronic",
+    "music",
+    "dance",
+    "club",
+    "other",
+    "experimental",
+    "alternative",
+    "indie",
+    "pop",
+    "rock",
+    "hip-hop",
+    "hip hop",
+}
+
+GENRE_ALIASES = {
+    "drum n bass": "Drum & Bass",
+    "drum and bass": "Drum & Bass",
+    "dnb": "Drum & Bass",
+    "d&b": "Drum & Bass",
+    "deep techno": "Techno",
+    "hard techno": "Hard Techno",
+    "detroit techno": "Detroit Techno",
+}
+
+
+def normalize_genre(name: str) -> str | None:
+    """Lowercase, apply alias map, filter filler tags and non-genre strings."""
+    stripped = name.strip()
+    if not stripped or len(stripped) > 30:
+        return None
+    # Drop tags with no Latin letters (Japanese, Chinese, Arabic, etc.)
+    if not re.search(r"[a-zA-Z]", stripped):
+        return None
+    low = stripped.lower()
+    if low in GENRE_BLACKLIST:
+        return None
+    canonical = GENRE_ALIASES.get(low)
+    if canonical:
+        return canonical
+    return stripped.title()
 
 
 def materialize_tags(artist_info: ArtistInfo) -> None:

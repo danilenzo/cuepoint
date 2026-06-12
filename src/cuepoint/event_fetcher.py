@@ -714,6 +714,36 @@ def run_cities_parallel_sync(
     return asyncio.run(_main())
 
 
+def format_learning_stats() -> str:
+    """Human-readable summary of the learned scoring adjustments."""
+    from .learning import compute_adjustments
+
+    counts = store.count_feedback()
+    total = sum(counts.values())
+    parts = ", ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
+    lines = [f"Feedback: {total} total" + (f" ({parts})" if parts else "")]
+    if total == 0:
+        lines.append("Record some Went/Skipped verdicts in the HTML report first.")
+        return "\n".join(lines)
+    adj = compute_adjustments()
+    if adj.multipliers:
+        lines.append("Signal multipliers (learned):")
+        for key, m in sorted(adj.multipliers.items(), key=lambda x: -x[1]):
+            lines.append(f"  {key:<16s} x{m:.2f}")
+    else:
+        lines.append(
+            f"Signal multipliers: inactive (need >= {cfg.learning_min_feedback()} total "
+            f"and >= {cfg.learning_min_per_class()} per verdict)"
+        )
+    if adj.genre_boosts:
+        lines.append("Genre boosts:")
+        for g, b in sorted(adj.genre_boosts.items(), key=lambda x: -abs(x[1]))[:10]:
+            lines.append(f"  {g:<24s} {b:+.0f}")
+    if adj.artist_boosts:
+        lines.append(f"Artist boosts: {len(adj.artist_boosts)} attended artists at +{cfg.learning_artist_boost()}")
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch RA.co events for one or more cities")
     parser.add_argument(
@@ -728,7 +758,22 @@ if __name__ == "__main__":
     parser.add_argument("--full", action="store_true", help="Force full re-scan, ignoring incremental cache")
     parser.add_argument("--parallel", type=int, default=1, help="Number of cities to scan concurrently (default: 1)")
     parser.add_argument("--verbose", action="store_true", help="Print top events with score breakdown after scan")
+    parser.add_argument("--learning-stats", action="store_true", help="Print learned scoring adjustments and exit")
+    parser.add_argument("--reset-learning", action="store_true", help="Delete all feedback and exit")
     args = parser.parse_args()
+
+    if args.learning_stats:
+        print(format_learning_stats())
+        raise SystemExit(0)
+
+    if args.reset_learning:
+        n = sum(store.count_feedback().values())
+        answer = input(f"Delete {n} feedback rows? [y/N] ").strip().lower()
+        if answer == "y":
+            print(f"Deleted {store.clear_feedback()} feedback rows.")
+        else:
+            print("Aborted.")
+        raise SystemExit(0)
 
     start_date = datetime.strptime(args.start, "%Y-%m-%d") if args.start else datetime.now()
 

@@ -24,7 +24,7 @@ def sample_artist_info():
         "soundcloud": "/test-artist",
         "discogs": "/artist/12345-Test-Artist",
         "contentUrl": "/dj/testart",
-        "country": "DE",
+        "country": {"name": "DE"},
         "sc_followers": 5000,
         "sc_following": 200,
         "sc_tags": json.dumps(["Techno", "Dark Techno", "Industrial"]),
@@ -191,6 +191,8 @@ def mock_config(monkeypatch):
         "discovery": {"rising_sc_pct": 20, "rising_dc_pct": 30},
         "discogs": {"max_masters": 15},
         "bandcamp": {"max_albums": 5},
+        # Keep tests hermetic: never read learned adjustments from the real DB.
+        "learning": {"enabled": False},
     }
     monkeypatch.setattr(cfg, "_cfg", test_cfg)
     return test_cfg
