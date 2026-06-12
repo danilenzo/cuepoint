@@ -354,6 +354,10 @@
     }
     .lineup-toggle:active { transform: scale(0.97); }
     .lineup-toggle svg { width: 12px; height: 12px; }
+    .lineup-more {
+        font-size: 12px; color: var(--text-muted); padding: 6px 0 0;
+        text-align: center;
+    }
     .artist-detail {
         font-size: 11px; color: var(--text-muted);
         padding: 6px 0 4px 16px; line-height: 1.6;
@@ -880,8 +884,8 @@
                         </template>
                     </div>
                     <div class="card-lineup">
-                        <template v-for="(a, idx) in (ev.lineupExpanded || ev.artists.length <= 5 ? ev.artists : ev.artists.slice(0, 3))" :key="idx">
-                            <div class="floor-label" v-if="a.floor && (idx === 0 || a.floor !== ev.artists[idx-1].floor)">{{ a.floor }}</div>
+                        <template v-for="(a, idx) in cardArtists(ev)" :key="idx">
+                            <div class="floor-label" v-if="a.floor && (idx === 0 || a.floor !== cardArtists(ev)[idx-1].floor)">{{ a.floor }}</div>
                             <div class="artist-row">
                                 <template v-if="a.scUrl">
                                     <a :href="a.scUrl"><b v-if="a.isFollowed">{{ a.name }}</b><span v-else>{{ a.name }}</span></a>
@@ -896,7 +900,6 @@
                                     <template v-if="a.bcUrl">
                                         &middot; <a :href="a.bcUrl" class="stat-label">BC</a>
                                         <span v-if="a.bcSupporters" class="stat-val">{{ fmtNum(a.bcSupporters) }}</span>
-                                        <span v-if="a.bcLatestRelease" style="opacity:0.4;font-size:0.85em;"> {{ a.bcLatestRelease }}</span>
                                     </template>
                                 </span>
                                 <span v-if="a.rising" class="rising-badge" title="Rising artist">
@@ -905,11 +908,7 @@
                                 <span v-if="a.similarTo" class="sim-badge">~ {{ a.similarTo }}</span>
                             </div>
                         </template>
-                        <button v-if="ev.artists.length > 5" class="lineup-toggle" @click.stop="ev.lineupExpanded = !ev.lineupExpanded">
-                            <svg v-if="!ev.lineupExpanded" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                            {{ ev.lineupExpanded ? 'Show less' : 'Show ' + (ev.artists.length - 3) + ' more' }}
-                        </button>
+                        <div class="lineup-more" v-if="ev.artists.length > 3">+{{ ev.artists.length - 3 }} more</div>
                     </div>
                 </div>
             </div>
@@ -1168,6 +1167,19 @@ createApp({
             ev.cardExpanded = !ev.cardExpanded;
         }
 
+        // Relevance order: followed > rising > everyone; SC followers desc inside
+        // each tier; original lineup order for exact ties.
+        function rankedArtists(ev) {
+            const tier = a => a.isFollowed ? 0 : (a.rising ? 1 : 2);
+            return ev.artists.map((a, i) => [a, i])
+                .sort((x, y) =>
+                    (tier(x[0]) - tier(y[0])) ||
+                    ((y[0].scFollowers || 0) - (x[0].scFollowers || 0)) ||
+                    (x[1] - y[1]))
+                .map(p => p[0]);
+        }
+        function cardArtists(ev) { return rankedArtists(ev).slice(0, 3); }
+
         function formatTickets(ev) {
             if (!ev.tickets || !ev.tickets.length) return '';
             var available = ev.tickets.filter(t => !t.soldOut).sort((a, b) => a.price - b.price);
@@ -1253,6 +1265,7 @@ createApp({
             genreDropdownOpen, selectedGenres, genreDropdown,
             columns, allGenres, topGenres, filteredEvents, visibleCount, totalCount,
             sortBy, toggleView, toggleGenreChip, toggleCard,
+            rankedArtists, cardArtists,
             formatDate, formatTimeRange, fmtNum, matchClass, formatTickets, cleanTicketTitle,
             downloadSingleICS, exportICS,
             feedback, setFeedback,

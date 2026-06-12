@@ -37,3 +37,15 @@ class TestIOSMeta:
         assert '<meta name="apple-mobile-web-app-capable" content="yes">' in html
         assert 'apple-mobile-web-app-status-bar-style" content="black-translucent"' in html
         assert '<meta name="theme-color" content="#0b0d14">' in html
+
+
+class TestRankedArtists:
+    def test_ranked_artists_function_present(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "function rankedArtists(" in html
+        assert "cardArtists" in html
+
+    def test_card_lineup_uses_ranked_top3(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "cardArtists(ev)" in html
+        assert "lineup-more" in html  # passive "+N more" label class
