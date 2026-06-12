@@ -84,9 +84,9 @@
     /* --- toolbar --- */
     .toolbar {
         position: sticky; top: 0; z-index: 10;
-        background: rgba(11,13,20,0.85);
-        backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
-        border-bottom: 1px solid var(--border);
+        background: rgba(11,13,20,0.7);
+        backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+        border-bottom: 1px solid var(--glass-border);
         padding: 12px clamp(8px, 2vw, 24px);
         display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
     }
@@ -138,7 +138,7 @@
     .tb-action {
         background: var(--bg-elevated); color: var(--text-secondary);
         border: 1px solid var(--border);
-        border-radius: var(--radius-sm); padding: 8px 14px; font-size: 13px;
+        border-radius: var(--radius-pill); padding: 8px 14px; font-size: 13px;
         cursor: pointer; transition: all var(--transition-base);
         display: inline-flex; align-items: center; gap: 6px;
         font-family: inherit; white-space: nowrap;
@@ -156,7 +156,7 @@
     .toolbar .ics-export, .toolbar .view-toggle {
         background: var(--bg-elevated); color: var(--text-secondary);
         border: 1px solid var(--border);
-        border-radius: var(--radius-sm); padding: 8px 14px; font-size: 13px;
+        border-radius: var(--radius-pill); padding: 8px 14px; font-size: 13px;
         cursor: pointer; transition: all var(--transition-base);
         display: inline-flex; align-items: center; gap: 6px;
         font-family: inherit;
@@ -175,7 +175,7 @@
     .genre-dropdown-btn {
         background: var(--bg-elevated); color: var(--text-secondary);
         border: 1px solid var(--border);
-        border-radius: var(--radius-sm); padding: 8px 14px; font-size: 13px;
+        border-radius: var(--radius-pill); padding: 8px 14px; font-size: 13px;
         cursor: pointer; transition: all var(--transition-base); white-space: nowrap;
         font-family: inherit; display: inline-flex; align-items: center; gap: 6px;
     }
@@ -207,7 +207,8 @@
     }
     thead { position: sticky; top: var(--toolbar-h, 50px); z-index: 5; }
     th {
-        background: var(--bg-secondary);
+        background: rgba(11,13,20,0.85);
+        backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
         color: var(--text-muted); border: none;
         border-bottom: 2px solid var(--border);
         padding: 10px 14px; text-align: left; font-size: 10px;
@@ -226,6 +227,7 @@
         line-height: 1.55; transition: background var(--transition-fast);
     }
     tr { transition: background var(--transition-fast); }
+    tbody tr { cursor: pointer; }
     tr:hover td { background: var(--bg-hover); }
     tr.followed td {
         background: var(--accent-dim);
@@ -253,11 +255,6 @@
         img:hover { transform: scale(1.03); box-shadow: var(--shadow-md); }
     }
     .hidden { display: none; }
-    /* zebra */
-    tbody tr:nth-child(even) td { background: var(--bg-secondary); }
-    tbody tr:nth-child(even):hover td { background: var(--bg-hover); }
-    tbody tr.followed:nth-child(even) td { background: rgba(74,158,255,0.08); }
-    tbody tr.followed:nth-child(even):hover td { background: rgba(74,158,255,0.18); }
     /* genre pills */
     .genre-pill {
         display: inline-flex; align-items: center; gap: 4px;
@@ -343,7 +340,7 @@
     .lineup-toggle {
         cursor: pointer; font-size: 12px; color: var(--accent);
         background: var(--accent-dim); border: 1px solid rgba(74,158,255,0.2);
-        border-radius: var(--radius-sm); padding: 6px 14px; margin-top: 8px;
+        border-radius: var(--radius-pill); padding: 6px 14px; margin-top: 8px;
         display: inline-flex; align-items: center; gap: 6px;
         font-family: inherit; transition: all var(--transition-base);
         width: 100%; justify-content: center;
@@ -377,8 +374,10 @@
         gap: 16px; padding: 16px clamp(8px, 2vw, 24px) 32px;
     }
     .event-card {
-        background: var(--bg-card); border: 1px solid var(--border);
-        border-radius: var(--radius); overflow: hidden;
+        background: var(--glass);
+        backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-card); overflow: hidden;
         transition: border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
         display: flex; flex-direction: column;
     }
@@ -397,12 +396,12 @@
     }
     .event-card .card-flyer::after {
         content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 70%;
-        background: linear-gradient(to top, rgba(12,14,18,0.95) 0%, rgba(12,14,18,0.4) 55%, transparent 100%);
+        background: linear-gradient(to top, rgba(8,9,14,0.94) 0%, rgba(8,9,14,0.4) 55%, transparent 100%);
         pointer-events: none; z-index: 1;
     }
     .event-card .card-flyer.no-flyer {
         min-height: 120px;
-        background: linear-gradient(135deg, #1a1e2e 0%, #1f2640 50%, #252b3d 100%);
+        background: linear-gradient(160deg,#3d2a6e 0%,#1b2440 55%,#0e1626 100%);
     }
     .event-card .card-flyer.no-flyer::after { display: none; }
     .card-overlay {
@@ -416,7 +415,7 @@
         text-shadow: 0 1px 4px rgba(0,0,0,0.6);
     }
     .card-overlay-title {
-        font-size: 16px; font-weight: 700; line-height: 1.3; margin-bottom: 5px;
+        font-size: 17px; font-weight: 700; line-height: 1.3; margin-bottom: 5px;
         display: flex; align-items: flex-start; gap: 8px;
         text-shadow: 0 1px 6px rgba(0,0,0,0.7);
     }
@@ -487,22 +486,21 @@
     /* match badge */
     .match-badge {
         display: inline-flex; align-items: center;
-        padding: 2px 8px; border-radius: 10px;
-        font-size: 12px; font-weight: 700;
-        font-variant-numeric: tabular-nums;
-        letter-spacing: -0.3px;
+        padding: 3px 10px; border-radius: var(--radius-pill);
+        font-size: 12px; font-weight: 800;
+        font-variant-numeric: tabular-nums; letter-spacing: -0.3px;
         cursor: pointer; transition: opacity var(--transition-fast);
+        background: var(--grad-score); color: #fff;
+        box-shadow: var(--shadow-badge);
     }
-    .match-badge:hover { opacity: 0.8; }
-    .match-badge.high { background: var(--green-dim); color: var(--green); }
-    .match-badge.mid { background: var(--accent-dim); color: var(--accent); }
-    .match-badge.low { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+    .match-badge:hover { opacity: 0.85; }
+    .match-badge.low { opacity: 0.55; box-shadow: none; }
     /* feedback buttons */
     .fb-btns { display: inline-flex; gap: 4px; margin-left: 6px; }
     .fb-btn {
-        font-size: 0.72rem; padding: 2px 8px; border-radius: 10px;
-        border: 1px solid var(--border); background: transparent;
-        color: var(--text-muted); cursor: pointer;
+        font-size: 0.72rem; padding: 2px 10px; border-radius: var(--radius-pill);
+        border: 1px solid var(--border); background: var(--glass);
+        color: var(--text-muted); cursor: pointer; min-height: 28px;
     }
     .fb-btn.went.active { color: var(--green); border-color: var(--green); background: rgba(152,195,121,0.12); }
     .fb-btn.skipped.active { color: var(--red); border-color: var(--red); background: var(--red-dim); }
@@ -624,7 +622,7 @@
     .genre-chips { scrollbar-width: none; }
     .genre-chip {
         display: inline-flex; align-items: center;
-        padding: 7px 16px; border-radius: 20px;
+        padding: 7px 16px; border-radius: var(--radius-pill);
         font-size: 13px; font-weight: 500; min-height: 44px;
         background: var(--bg-elevated); color: var(--text-secondary);
         border: 1px solid var(--border); cursor: pointer;
@@ -668,9 +666,6 @@
         }
         tbody tr:hover { border-color: var(--border-hover); }
         tbody tr.followed { border-left: 3px solid var(--accent); background: var(--accent-dim); }
-        tbody tr:nth-child(even) td,
-        tbody tr:nth-child(even):hover td,
-        tbody tr.followed:nth-child(even) td { background: transparent; }
         tbody tr td:first-child { box-shadow: none; }
         td {
             padding: 8px 14px; border-bottom: 1px solid var(--border);

@@ -71,3 +71,13 @@ class TestDetailView:
         html = _render(sample_artist_info)
         assert "card-expand-hint" not in html
         assert "cardExpanded" not in html
+
+
+class TestGlassRestyle:
+    def test_gradient_match_badge(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "var(--grad-score)" in html
+
+    def test_zebra_striping_removed(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "tbody tr:nth-child(even)" not in html
