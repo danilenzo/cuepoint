@@ -612,14 +612,37 @@
         border-radius: 3px; font-family: inherit; color: var(--text-muted);
         vertical-align: middle; line-height: 1.4;
     }
-    /* genre quick-filter chips */
-    .genre-chips {
-        display: none; overflow-x: auto; -webkit-overflow-scrolling: touch;
-        padding: 8px clamp(8px, 2vw, 24px); gap: 8px;
-        background: var(--bg-primary); border-bottom: 1px solid var(--border);
+    /* mobile bottom action bar */
+    .bottom-bar {
+        display: none; position: fixed; left: 12px; right: 12px;
+        bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 40;
+        border-radius: var(--radius-pill); padding: 6px;
+        background: rgba(20,23,33,0.8);
+        gap: 6px;
     }
-    .genre-chips::-webkit-scrollbar { display: none; }
-    .genre-chips { scrollbar-width: none; }
+    .bar-btn {
+        flex: 1; min-height: 44px; border: none; background: transparent;
+        color: var(--text-secondary); font-family: inherit; font-size: 12px;
+        font-weight: 600; border-radius: var(--radius-pill); cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    }
+    .bar-btn svg { width: 15px; height: 15px; }
+    .bar-btn.active { background: var(--accent-dim); color: var(--accent); }
+    .bar-search, .bar-filter {
+        display: none; position: fixed; left: 12px; right: 12px;
+        bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 40;
+        border-radius: var(--radius); padding: 10px;
+        background: rgba(20,23,33,0.92);
+    }
+    .bar-search input {
+        width: 100%; background: var(--glass); color: var(--text-primary);
+        border: 1px solid var(--glass-border); border-radius: var(--radius-pill);
+        padding: 10px 14px; font-size: 14px; outline: none;
+    }
+    .bar-filter-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 4px 10px; }
+    .bar-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 40vh; overflow-y: auto; }
+    /* genre quick-filter chips */
     .genre-chip {
         display: inline-flex; align-items: center;
         padding: 7px 16px; border-radius: var(--radius-pill);
@@ -657,40 +680,16 @@
     }
     @media (max-width: 768px) {
         .toolbar-brand .brand-text { display: none; }
-        .table-wrap { padding: 8px; }
-        table, thead, tbody, tr, th, td { display: block; width: 100%; }
-        thead { position: static; display: none; }
-        tbody tr {
-            background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: var(--radius); margin-bottom: 12px; padding: 0; overflow: hidden;
-        }
-        tbody tr:hover { border-color: var(--border-hover); }
-        tbody tr.followed { border-left: 3px solid var(--accent); background: var(--accent-dim); }
-        tbody tr td:first-child { box-shadow: none; }
-        td {
-            padding: 8px 14px; border-bottom: 1px solid var(--border);
-            position: relative; min-height: 28px; width: auto !important; min-width: 0; max-width: none; white-space: normal; overflow: visible;
-        }
-        td:last-child { border-bottom: none; }
-        td::before {
-            content: attr(data-label); display: block; font-size: 10px; font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 4px;
-        }
-        td[data-label="flyer"] img { max-width: 100%; width: 100%; max-height: 60vh; object-fit: cover; border-radius: var(--radius) var(--radius) 0 0; }
-        td[data-label="flyer"] { padding: 0; order: -1; }
-        td[data-label="flyer"]::before { display: none; }
-        td[data-label="time"] { background: var(--bg-elevated); font-size: 13px; }
-        td[data-label="promoters"], td[data-label="strength"], td[data-label="attenders"] { display: none; }
-        td[data-label="genre"] .genre-pill { font-size: 10px; padding: 2px 7px; }
-        td[data-label="lineup"] .artist-row { font-size: 12px; }
-        td[data-label="lineup"] .artist-stats { font-size: 11px; }
-        .card-grid { grid-template-columns: 1fr; padding: 8px; gap: 20px; }
+        .table-wrap { display: none; }
+        .bottom-bar { display: flex; }
+        .bar-search, .bar-filter { display: block; }
+        .toolbar .search-wrap, .toolbar > label, .toolbar .view-toggle,
+        .toolbar .ics-export, .toolbar .genre-dropdown { display: none; }
+        .card-grid { grid-template-columns: 1fr; padding: 8px; gap: 20px; padding-bottom: 90px; }
         .event-card:hover { transform: none; }
         .event-card .card-flyer img { max-height: 60vh; }
         .card-overlay-title { font-size: 18px; }
         .card-overlay { padding: 16px; }
-        .genre-chips { display: flex; }
-        .genre-dropdown { display: none; }
     }
 </style>
 </head>
@@ -745,21 +744,6 @@
             Export .ics
         </button>
         <span class="count">{{ visibleCount === totalCount ? totalCount + ' events' : visibleCount + ' / ' + totalCount + ' events' }}</span>
-    </div>
-
-    <!-- Genre quick-filter chips (mobile) -->
-    <div class="genre-chips" v-if="topGenres.length">
-        <button v-if="selectedGenres.length" class="genre-chip active"
-                @click="selectedGenres = []" style="color:var(--red);border-color:rgba(224,108,117,0.3);background:var(--red-dim);">
-            Clear
-        </button>
-        <button v-for="g in topGenres" :key="g.name"
-                class="genre-chip"
-                :class="[{active: selectedGenres.includes(g.name)}, g.category]"
-                :aria-pressed="selectedGenres.includes(g.name)"
-                @click="toggleGenreChip(g.name)">
-            {{ g.name }}
-        </button>
     </div>
 
     <!-- Table view -->
@@ -955,6 +939,36 @@
         </div>
     </div>
 
+    <!-- Mobile bottom action bar -->
+    <div class="bottom-bar glass" v-if="isMobile">
+        <button class="bar-btn" :class="{active: mobileSearchOpen}" @click="mobileSearchOpen = !mobileSearchOpen; mobileFilterOpen = false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            Search
+        </button>
+        <button class="bar-btn" :class="{active: mobileFilterOpen || selectedGenres.length || followedOnly}" @click="mobileFilterOpen = !mobileFilterOpen; mobileSearchOpen = false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            Filter{{ selectedGenres.length ? ' (' + selectedGenres.length + ')' : '' }}
+        </button>
+        <button class="bar-btn" @click="exportICS">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            .ics
+        </button>
+    </div>
+    <div class="bar-search glass" v-if="isMobile && mobileSearchOpen">
+        <input type="text" v-model="searchQuery" placeholder="Search artists, venues..."
+               @keydown.escape="mobileSearchOpen = false" aria-label="Search events">
+    </div>
+    <div class="bar-filter glass" v-if="isMobile && mobileFilterOpen">
+        <label class="bar-filter-row"><input type="checkbox" v-model="followedOnly"> Followed only</label>
+        <div class="bar-filter-chips">
+            <button v-for="g in topGenres" :key="g.name" class="genre-chip"
+                    :class="[{active: selectedGenres.includes(g.name)}, g.category]"
+                    :aria-pressed="selectedGenres.includes(g.name)"
+                    @click="toggleGenreChip(g.name)">{{ g.name }}</button>
+            <button v-if="selectedGenres.length" class="genre-chip" style="color:var(--red);" @click="selectedGenres = []">Clear</button>
+        </div>
+    </div>
+
     <!-- Detail view: bottom sheet (mobile) / centered modal (desktop) -->
     <div class="detail-backdrop" v-if="detailEvent" @click.self="closeDetail()">
         <div class="detail-panel glass" role="dialog" aria-modal="true" :aria-label="detailEvent.title" tabindex="-1">
@@ -1074,6 +1088,8 @@ createApp({
         const sortAsc = ref(true);
         const viewMode = ref(window.innerWidth <= 768 ? 'card' : 'table');
         const isMobile = ref(window.innerWidth <= 768);
+        const mobileSearchOpen = ref(false);
+        const mobileFilterOpen = ref(false);
         const genreDropdownOpen = ref(false);
         const selectedGenres = ref([]);
         const genreDropdown = ref(null);
@@ -1395,7 +1411,10 @@ createApp({
                 genreDropdownOpen.value = false;
             }
         }
-        function onResize() { isMobile.value = window.innerWidth <= 768; }
+        function onResize() {
+            isMobile.value = window.innerWidth <= 768;
+            if (isMobile.value && viewMode.value === 'table') viewMode.value = 'card';
+        }
         onMounted(() => { document.addEventListener('click', onDocClick, true); window.addEventListener('resize', onResize); syncFeedback(); });
         onUnmounted(() => { document.removeEventListener('click', onDocClick, true); window.removeEventListener('resize', onResize); });
 
@@ -1411,6 +1430,7 @@ createApp({
 
         return {
             searchQuery, followedOnly, sortColumn, sortAsc, viewMode, isMobile,
+            mobileSearchOpen, mobileFilterOpen,
             genreDropdownOpen, selectedGenres, genreDropdown,
             columns, allGenres, topGenres, filteredEvents, visibleCount, totalCount,
             sortBy, toggleView, toggleGenreChip,

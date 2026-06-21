@@ -81,3 +81,17 @@ class TestGlassRestyle:
     def test_zebra_striping_removed(self, sample_artist_info, mock_config):
         html = _render(sample_artist_info)
         assert "tbody tr:nth-child(even)" not in html
+
+
+class TestMobileBottomBar:
+    def test_bottom_bar_markup(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "bottom-bar" in html
+        assert "mobileSearchOpen" in html
+        assert "mobileFilterOpen" in html
+
+    def test_mobile_table_css_removed(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        # the old table-to-block transform must be gone
+        assert "table, thead, tbody, tr, th, td { display: block" not in html
+        assert "attr(data-label)" not in html
