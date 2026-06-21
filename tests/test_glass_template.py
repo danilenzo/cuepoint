@@ -95,3 +95,14 @@ class TestMobileBottomBar:
         # the old table-to-block transform must be gone
         assert "table, thead, tbody, tr, th, td { display: block" not in html
         assert "attr(data-label)" not in html
+
+
+class TestMotion:
+    def test_entrance_animation_present(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "@keyframes card-in" in html
+        assert "animationDelay" in html
+
+    def test_reduced_motion_guard_kept(self, sample_artist_info, mock_config):
+        html = _render(sample_artist_info)
+        assert "prefers-reduced-motion" in html

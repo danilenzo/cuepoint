@@ -81,6 +81,28 @@
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
     }
+    /* --- motion --- */
+    @keyframes card-in {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .event-card { animation: card-in 350ms ease-out backwards; }
+    @keyframes sheet-in {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+    }
+    @keyframes modal-in {
+        from { opacity: 0; transform: scale(0.96); }
+        to { opacity: 1; transform: scale(1); }
+    }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .detail-backdrop { animation: fade-in 200ms ease-out; }
+    .detail-panel { animation: sheet-in 320ms cubic-bezier(0.32, 0.72, 0, 1); }
+    @media (min-width: 768px) {
+        .detail-panel { animation: modal-in 220ms ease-out; }
+    }
+    .event-card:active { transform: scale(0.98); }
+    .bar-btn:active, .detail-actions .fb-btn:active, .detail-actions .act-btn:active { transform: scale(0.95); }
     /* --- toolbar --- */
     .toolbar {
         position: sticky; top: 0; z-index: 10;
@@ -855,8 +877,9 @@
 
     <!-- Card view -->
     <div class="card-grid" v-if="viewMode === 'card'">
-        <div class="event-card" v-for="ev in filteredEvents" :key="ev.id"
+        <div class="event-card" v-for="(ev, evIdx) in filteredEvents" :key="ev.id"
              :class="{followed: ev.hasFollowed}"
+             :style="{animationDelay: Math.min(evIdx, 15) * 40 + 'ms'}"
              @click="onEventClick(ev, $event)">
             <div class="card-flyer" :class="{'no-flyer': !ev.flyer}">
                 <img v-if="ev.flyer" :src="ev.flyer" :alt="ev.title" loading="lazy">
