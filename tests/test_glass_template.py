@@ -14,14 +14,21 @@ def _render(sample_artist_info):
 class TestGlassTokens:
     def test_new_tokens_present(self, sample_artist_info, mock_config):
         html = _render(sample_artist_info)
-        for token in ("--glass:", "--glass-strong:", "--glass-border:",
-                      "--grad-score:", "--radius-pill:", "--radius-card:", "--blur:"):
+        for token in (
+            "--glass:",
+            "--glass-strong:",
+            "--glass-border:",
+            "--grad-score:",
+            "--radius-pill:",
+            "--radius-card:",
+            "--blur:",
+        ):
             assert token in html, f"missing token {token}"
 
     def test_base_palette(self, sample_artist_info, mock_config):
         html = _render(sample_artist_info)
-        assert "#0b0d14" in html          # new page base
-        assert "#a855f7" in html          # new purple
+        assert "#0b0d14" in html  # new page base
+        assert "#a855f7" in html  # new purple
         assert "rgba(88,60,200,0.22)" in html  # violet ambient glow
 
     def test_substitution_markers_survive(self, sample_artist_info, mock_config):
