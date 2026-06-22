@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/danilenzo/cuepoint/actions/workflows/ci.yml/badge.svg)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue)
-![Tests](https://img.shields.io/badge/tests-587_passing-green)
+![Tests](https://img.shields.io/badge/tests-641_passing-green)
 ![Coverage](https://img.shields.io/badge/coverage-75%25+-brightgreen)
 ![mypy strict](https://img.shields.io/badge/mypy-strict-blue)
 ![Docker](https://img.shields.io/badge/docker-ready-blue)
@@ -14,7 +14,7 @@ Checking event listings manually is tedious — cross-referencing Resident Advis
 
 Give it a list of cities and a date range — it fetches every upcoming event from Resident Advisor and venue websites, enriches every artist from three platforms, scores and ranks events against your taste profile, and outputs an interactive report ready to browse before the weekend.
 
-**16 cities · 4 APIs · 587 tests · Used in production weekly.**
+**16 cities · 4 APIs · 641 tests · Used in production weekly.**
 
 ![Cuepoint card view](docs/screenshots/report_cards.png)
 
@@ -25,7 +25,7 @@ Give it a list of cities and a date range — it fetches every upcoming event fr
 **Core:** Python 3.12, FastAPI, httpx (async), SQLite (WAL mode)
 **Data:** pandas, BeautifulSoup, lxml
 **Infra:** Docker, Docker Compose, Make
-**Testing:** pytest (587 tests across 40 files), mypy strict, ruff
+**Testing:** pytest (641 tests across 49 files), mypy strict, ruff
 **APIs:** GraphQL consumption, REST (Discogs, SoundCloud), web scraping (Bandcamp)
 **Patterns:** ETL pipeline, registry pattern, retry with exponential backoff, incremental processing, thread-safe concurrency
 
@@ -33,7 +33,7 @@ Give it a list of cities and a date range — it fetches every upcoming event fr
 
 ## Engineering Highlights
 
-- **587 tests** across 40 files — unit, integration, API endpoint, security (XSS, SSRF), concurrency, and end-to-end pipeline coverage
+- **641 tests** across 49 files — unit, integration, API endpoint, security (XSS, SSRF), concurrency, report template, and end-to-end pipeline coverage
 - **Strict type checking** — `mypy --strict` across the entire codebase with full type annotations
 - **Zero Selenium** — all HTTP via async `httpx` with retry/backoff/jitter
 - **Incremental processing** — SHA-256 lineup hashing skips 60-70% of enrichment work on repeat scans
@@ -45,6 +45,7 @@ Give it a list of cities and a date range — it fetches every upcoming event fr
 - **Dual SoundCloud auth** — OAuth 2.1 when configured, automatic fallback to scraped `client_id` from JS bundles
 - **CI pipeline** — lint, typecheck, test, and security audit on every push
 - **Scoring feedback loop** — Went/Skipped verdicts from the report tune signal weights (clamped multipliers, cold-start gated) and accumulate genre/artist boosts; offline-capable via localStorage queue
+- **Glass-design report** — Vue 3 single-file report with glassmorphism design tokens, ambient glows, staggered entrance motion, sheet/modal transitions, relevance-ranked card lineups, an event detail view with a "why this matches" panel, and a cards-only mobile layout with bottom action bar
 
 ---
 
@@ -193,7 +194,7 @@ src/cuepoint/
   following.py       -- followed artist set, URL matching
   fuzzy_match.py     -- name normalization, Levenshtein distance
   config.py          -- typed accessors from config.toml
-tests/               -- 587 tests across 40 files
+tests/               -- 641 tests across 49 files
 ```
 
 ### Pipeline Flow
@@ -324,11 +325,11 @@ Club events are deduplicated against the listing platform by venue + date matchi
 ## Testing
 
 ```bash
-make test                           # run all 587 tests
+make test                           # run all 641 tests
 pytest tests/ --cov=src/cuepoint    # with coverage
 ```
 
-40 test files covering: config validation, SQLite storage (CRUD + batch ops + migrations), HTTP retry logic (sync + async), SoundCloud auth/circuit breaker, Discogs/Bandcamp API mocking, club scraper parsing, enrichment pipeline, scoring with discovery signals, genre filtering, fuzzy matching, event fetching/parsing, HTML helpers, following detection, payload builders, pipeline stats, FastAPI endpoints (health, pagination, rate limiting, export), security (XSS injection, SSRF prevention), concurrency under load, lazy initialization, and full end-to-end pipeline tests.
+49 test files covering: config validation, SQLite storage (CRUD + batch ops + migrations), HTTP retry logic (sync + async), SoundCloud auth/circuit breaker, Discogs/Bandcamp API mocking, club scraper parsing, enrichment pipeline, scoring with discovery signals, genre filtering, fuzzy matching, event fetching/parsing, HTML helpers, following detection, payload builders, pipeline stats, FastAPI endpoints (health, pagination, rate limiting, export), security (XSS injection, SSRF prevention), concurrency under load, lazy initialization, and full end-to-end pipeline tests.
 
 ---
 
